@@ -1,0 +1,4 @@
+with-compiler: ghc-9.10.1
+packages: */*.cabal
+tests: True
+benchmarks: True

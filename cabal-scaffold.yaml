@@ -1,0 +1,14 @@
+templateDirs: []
+hpack: true
+
+defaults:
+  template: monorepo-single
+  snapshot: lts
+  noProject: true
+
+params:
+  monorepo: humblr
+  author-name: Hiromi ISHII
+  author-email: konn.jinro_at_gmail.com
+  github-username: konn
+  ghc: 9.10.1
