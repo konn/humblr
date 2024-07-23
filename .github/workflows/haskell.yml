@@ -10,7 +10,6 @@ env:
 jobs:
   build:
     name: Build WASM
-    continue-on-error: true
     container: ghcr.io/konn/humblr/build:9.10.0.20240412
     env:
       project-file: cabal-wasm.project
