@@ -51,7 +51,7 @@ jobs:
         key: ${{steps.cache-keys.outputs.store}}
     - name: Build All
       run: | 
-        ${{env.cabal}} build all
+        ${{env.CABAL}} build all
     - name: Save dist-newstyle Cache
       uses: actions/cache/save@v3
       with:
