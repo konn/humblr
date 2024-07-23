@@ -199,3 +199,24 @@ source-repository-package
     steward-core
     steward-client
     steward-workers
+
+source-repository-package
+  type: git
+  location: https://github.com/deepflowinc/effectful-extras
+  tag: 11fec60ba00e63beb12cd57a96396ca84bc6d3e7
+  subdir:
+    streaming-effectful
+    streaming-http-effectful
+    effectful-lens
+    path-tagged-effectful
+    random-effectful
+    time-effectful
+    log-effectful-extra
+
+source-repository-package
+  type: git
+  location: https://github.com/deepflowinc/streaming-extras
+  tag: d651e6f0c65c764155a778780cf2770f28ae23de
+  subdir:
+    streaming-SHA
+    streaming-http
