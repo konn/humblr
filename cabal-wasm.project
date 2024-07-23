@@ -1,0 +1,23 @@
+import: cabal-common.project
+with-compiler: wasm32-wasi-ghc-9.10.0.20240412
+optimization: 2
+allow-newer:
+  base,
+  bytestring,
+  containers,
+  deepseq,
+  filepath,
+  ghc-prim,
+  template-haskell,
+  text,
+  time,
+
+-- source-repository-package
+--   type: git
+--   location: https://github.com/amesgen/splitmix
+--   tag: 83b906c4bcdc2720546f1779a16eb65e8e12ecba
+package QuickCheck
+  flags: -templateHaskell
+
+package reflection
+  flags: -template-haskell
