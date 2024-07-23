@@ -3,11 +3,15 @@ on:
   push: {branches: ["main"]}
   pull_request:
 
-jobs:
+env:
+  GHC_VER: "9.10.0.20240412"
+  CABAL: CABAL=wasm32-wasi-cabal --project-file=cabal-wasm.project --with-ghc=wasm32-wasi-ghc --with-ghc-pkg=wasm32-wasi-ghc-pkg --with-hsc2hs=wasm32-wasi-hsc2hs
 
+jobs:
   build:
     name: Build (${{matrix.plan.name}})
     continue-on-error: true
+    container: ghcr.io/konn/humblr/build:9.10.0.20240412
     strategy:
       matrix:
         plan: 
@@ -17,12 +21,7 @@ jobs:
           is_head: false
       fail-fast: false
     env:
-      cabal-version: 3.10.2.0
-      cabal: "cabal --project-file=${{matrix.plan.path}}"
-      ghc: ${{matrix.plan.ghc}}
-      project-file: ${{matrix.plan.path}}
-      plan: ${{matrix.plan.name}}
-      artifact-name: "artifact-${{matrix.plan.name}}"
+      project-file: cabal-wasm.project
     runs-on: ubuntu-latest
     outputs:
       benchmarks: ${{steps.list-bins.outputs.benchs}}
@@ -38,14 +37,7 @@ jobs:
       with:
         script: |
           const script = require('./ci/scripts/calc-cache-keys.js')
-          await script({ os: "ubuntu", plan: ${{toJSON(env.plan)}}, path: ${{toJSON(env.project-file)}}, core, glob })
-
-    - name: Setup Haskell
-      uses: haskell-actions/setup@v2
-      with:
-        enable-stack: false
-        cabal-version: ${{env.cabal-version}}
-        ghc-version: ${{env.ghc}}
+          await script({ os: "ubuntu", plan: "cabal-wasm", path: ${{toJSON(env.project-file)}}, core, glob })
     - name: Restore ~/.cabal/store
       uses: actions/cache/restore@v3
       with:
@@ -60,11 +52,11 @@ jobs:
         restore-keys: ${{steps.cache-keys.outputs.dist-restore}}
     - name: cabal configure
       run: |
-        ${{env.cabal}} v2-configure --enable-tests --enable-benchmarks --enable-optimisation=2
-        ${{env.cabal}} update
+        ${{env.CABAL}} v2-configure --enable-tests --enable-benchmarks --enable-optimisation=2
+        ${{env.CABAL}} update
     - name: Build Dependencies
       run: | 
-        ${{env.cabal}} build --only-dependencies all
+        ${{env.CABAL}} build --only-dependencies all
     - name: Save ~/.cabal/store Cache
       uses: actions/cache/save@v3
       with:
@@ -95,75 +87,6 @@ jobs:
         echo "benchs=$(jq -cMnR '[inputs]' <"${{env.artifact-name}}"/benchs.list)" >>"${GITHUB_OUTPUT}"
         echo "tests=$(jq -cMnR '[inputs]' <"${{env.artifact-name}}"/tests.list)" >>"${GITHUB_OUTPUT}"
 
-  test:
-    name: Test (${{matrix.plan.name}})
-    needs: [build]
-    continue-on-error: ${{matrix.plan.is_head}}
-    strategy:
-      matrix:
-        ## TODO: When OSS is ready, use the following line
-        # plan: ${{fromJSON(needs.ci-enumerate.outputs.plan)}}
-
-        ## TODO: When OSS is ready, delete the following:
-          plan: 
-            - path: "cabal.project.freeze"
-              name: "ghc-9.6.6"
-              ghc: "9.6.6"
-              is_head: false
-      fail-fast: false
-    env:
-      cabal: 3.10.1.0
-      ghc: ${{matrix.plan.ghc}}
-      project-file: ${{matrix.plan.path}}
-      plan: ${{matrix.plan.name}}
-      artifact: artifact-${{matrix.plan.name}}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Fail when Corresponding Build didn't succeed
-        if: ${{needs.build.result != 'success' }}
-        run: echo "BUILD FAILED" >&2; exit 1
-      - uses: actions/checkout@v3
-        with:
-          ref: ${{github.event.pull_request.head.sha || github.sha}}
-      - name: Download artifacts
-        id: download
-        uses: actions/download-artifact@v3
-      - name: Decompress
-        run: tar xaf ${{env.artifact}}/${{env.artifact}}.tar.zst
-      - name: Run Tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          TOTAL=0
-          SUCCESS=0
-          FAIL=0
-          while read -r TEST; do
-            TOTAL=$((TOTAL + 1))
-            echo "--------"
-            echo "Running: ${TEST}"
-            set +e
-            ${{env.artifact}}/tests/"${TEST}"
-            RESL=$?
-            set -e
-            if [ ${RESL} -eq 0 ]; then
-              SUCCESS=$((SUCCESS + 1))
-              echo "Result: Successed"
-            else
-              FAIL=$((FAIL + 1))
-              echo 'Result: FAILED!'
-            fi
-          done <${{env.artifact}}/tests.list
-
-          echo ""
-          echo "----"
-
-          if [ "${FAIL}" -eq 0 ]; then
-            echo "All ${TOTAL} tests passed."
-          else
-            echo "${FAIL} out of ${TOTAL} tests FAILED"'!'
-            exit 1
-          fi
-
   fourmolu:
     name: Fourmolu
     runs-on: ubuntu-latest
@@ -183,7 +106,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - uses: haskell-actions/setup@v2
+    - uses: haskell/actions/setup@v2
       with:
         cabal-version: 3.10.2.0
         ghc-version: 9.4.8
