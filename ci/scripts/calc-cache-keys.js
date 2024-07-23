@@ -7,7 +7,11 @@ module.exports = async ({ os, plan, path, core, glob }) => {
 
     return { key: comps.join("-"), restore: fallbacks.join("\n") };
   }
-  const project_hash = await glob.hashFiles("cabal.project", path);
+  const project_hash = await glob.hashFiles(
+    "cabal.project",
+    "cabal-common.project",
+    path
+  );
   core.setOutput("project", project_hash);
 
   const package_hash = await glob.hashFiles("**/*.cabal");
