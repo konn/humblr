@@ -9,18 +9,12 @@ env:
 
 jobs:
   build:
-    name: Build (${{matrix.plan.name}})
+    name: Build WASM
     continue-on-error: true
     container: ghcr.io/konn/humblr/build:9.10.0.20240412
-    strategy:
-      fail-fast: false
     env:
       project-file: cabal-wasm.project
     runs-on: ubuntu-latest
-    outputs:
-      benchmarks: ${{steps.list-bins.outputs.benchs}}
-      tests: ${{steps.list-bins.outputs.tests}}
-      artifact: "artifact-${{matrix.plan.name}}"
     steps:
     - uses: actions/checkout@v3
       with:
@@ -67,19 +61,13 @@ jobs:
 
     - name: Collect binaries
       continue-on-error: true
-      run: bash ./ci/scripts/collect-bins.sh "${{env.artifact-name}}"
+      run: bash ./ci/scripts/collect-bins.sh "artifacts.tar.zst"
     - name: Upload Aritracts
       uses: actions/upload-artifact@v3
       with:
-        path: ${{env.artifact-name}}.tar.zst
-        name: ${{env.artifact-name}}
+        path: artifacts.tar.zst
+        name: artifacs
         retention-days: 1
-    - name: List Binaries
-      id: list-bins
-      shell: bash
-      run: |
-        echo "benchs=$(jq -cMnR '[inputs]' <"${{env.artifact-name}}"/benchs.list)" >>"${GITHUB_OUTPUT}"
-        echo "tests=$(jq -cMnR '[inputs]' <"${{env.artifact-name}}"/tests.list)" >>"${GITHUB_OUTPUT}"
 
   fourmolu:
     name: Fourmolu
@@ -100,8 +88,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - uses: haskell/actions/setup@v2
+    - uses: haskell-actions/setup@v2
       with:
-        cabal-version: 3.10.2.0
-        ghc-version: 9.4.8
+        cabal-version: 3.12.1.0
+        ghc-version: 9.10.1
     - run: bash ./ci/scripts/cabal-check-packages.sh
