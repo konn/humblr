@@ -42,7 +42,7 @@ common defaults
 
 library
   import: defaults
-  hs-source-dirs: src
+  build-depends: cloudflare-worker
   hs-source-dirs: src
   -- cabal-gild: discover src --exclude=src/**/Internal.hs --exclude=src/**/Internal/**/*.hs
   exposed-modules: Lib
