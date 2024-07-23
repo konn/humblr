@@ -1,4 +1,5 @@
 import: cabal-common.project
+packages: */*.cabal
 with-compiler: wasm32-wasi-ghc-9.10.0.20240412
 optimization: 2
 allow-newer:
