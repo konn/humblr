@@ -5,7 +5,7 @@ on:
 
 env:
   GHC_VER: "9.10.0.20240412"
-  CABAL: CABAL=wasm32-wasi-cabal --project-file=cabal-wasm.project --with-ghc=wasm32-wasi-ghc --with-ghc-pkg=wasm32-wasi-ghc-pkg --with-hsc2hs=wasm32-wasi-hsc2hs
+  CABAL: wasm32-wasi-cabal --project-file=cabal-wasm.project --with-ghc=wasm32-wasi-ghc --with-ghc-pkg=wasm32-wasi-ghc-pkg --with-hsc2hs=wasm32-wasi-hsc2hs
 
 jobs:
   build:
@@ -13,12 +13,6 @@ jobs:
     continue-on-error: true
     container: ghcr.io/konn/humblr/build:9.10.0.20240412
     strategy:
-      matrix:
-        plan: 
-        - path: "cabal.project.freeze"
-          name: "ghc-9.6.6"
-          ghc: "9.6.6"
-          is_head: false
       fail-fast: false
     env:
       project-file: cabal-wasm.project
