@@ -25,10 +25,10 @@ jobs:
         script: |
           const script = require('./ci/scripts/calc-cache-keys.js')
           await script({ os: "ubuntu", plan: "cabal-wasm", path: ${{toJSON(env.project-file)}}, core, glob })
-    - name: Restore ~/.cabal/store
+    - name: Restore /root/.ghc-wasm/.cabal/store
       uses: actions/cache/restore@v3
       with:
-        path: ~/.cabal/store
+        path: /root/.ghc-wasm/.cabal/store
         key: ${{steps.cache-keys.outputs.store}}
         restore-keys: ${{steps.cache-keys.outputs.store-restore}}
     - name: Restore dist-newstyle
@@ -44,12 +44,10 @@ jobs:
     - name: Build Dependencies
       run: | 
         ${{env.CABAL}} build --only-dependencies all
-    - name: Debug - List HOME
-      run: ls -lav ~/
-    - name: Save ~/.cabal/store Cache
+    - name: Save /root/.ghc-wasm/.cabal/store Cache
       uses: actions/cache/save@v3
       with:
-        path: ~/.cabal/store
+        path: /root/.ghc-wasm/.cabal/store
         key: ${{steps.cache-keys.outputs.store}}
     - name: Build All
       run: | 
