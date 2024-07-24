@@ -4,7 +4,7 @@
       {
         "cmd": "find . -not -path '**/dist-newstyle/**' -and \\( -name '*.cabal' -or -name 'cabal*.project*' \\) -exec cabal-gild --io {} \\;",
         "isAsync": true,
-        "match": "(\\.l?hs|cabal.*\\.project.*)$"
+        "match": "(\\.l?hs|cabal.*\\.project.*|\\*.cabal)$"
       }
     ]
   },

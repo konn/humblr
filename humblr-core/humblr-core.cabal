@@ -54,11 +54,7 @@ executable humblr-core
   main-is: Main.hs
   -- cabal-gild: discover app --exclude=app/Main.hs
   other-modules:
-  ghc-options:
-    -threaded
-    -rtsopts
-    -with-rtsopts=-N
-
+  ghc-options: -O2
   build-depends: humblr-core
 
 test-suite humblr-core-test
