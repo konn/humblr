@@ -75,4 +75,6 @@ test-suite humblr-frontend-test
     -rtsopts
     -with-rtsopts=-N
 
+  if os(wasi)
+    buildable: False
   build-depends: humblr-frontend
