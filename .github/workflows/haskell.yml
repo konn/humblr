@@ -44,6 +44,8 @@ jobs:
     - name: Build Dependencies
       run: | 
         ${{env.CABAL}} build --only-dependencies all
+    - name: Debug - List HOME
+      run: ls -lav ~/
     - name: Save ~/.cabal/store Cache
       uses: actions/cache/save@v3
       with:
