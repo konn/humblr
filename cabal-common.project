@@ -8,7 +8,6 @@ constraints:
   aeson-pretty ==0.8.10,
   ansi-terminal -example,
   appar ==0.1.8,
-  array ==0.5.7.0,
   asn1-encoding ==0.9.6,
   asn1-parse ==0.9.5,
   asn1-types ==0.3.4,
