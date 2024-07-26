@@ -6,6 +6,7 @@
 {-# LANGUAGE LinearTypes #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Humblr.Workers.Frontend (frontendHandlers, JSObject (..), JSHandlers) where
 
@@ -61,8 +62,7 @@ frontend req env ctx = handleAny reportError do
       rawPathInfo = BS8.pack uri.uriPath
       pathInfo = decodePathSegments rawPathInfo
       ctype = defaultMimeLookup $ last pathInfo
-  rawPath <- fromHaskellByteString rawPathInfo
-  mcache <- fmap fromNullable . await =<< Cache.match (inject rawPath) Nothing
+  mcache <- fmap fromNullable . await =<< Cache.match (inject req) Nothing
   case mcache of
     Just rsp -> pure rsp
     Nothing -> do
@@ -106,9 +106,9 @@ throwCode = fmap throwIO . ResponseError
 
 reportError :: SomeException -> IO Resp.WorkerResponse
 reportError exc = do
-  let (stt, msg) = case fromException exc of
-        Just (ResponseError code m) -> (code, m)
-        Nothing -> (500, "Unknown Exception: " <> T.pack (displayException exc))
+  let (stt, msg) = case exc of
+        (fromException -> Just (ResponseError code m)) -> (code, m)
+        _ -> (500, "Unknown Exception: " <> T.pack (displayException exc))
       body =
         T.unlines
           [ msg
