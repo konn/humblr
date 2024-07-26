@@ -7,7 +7,7 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Humblr.Workers.Frontend (frontendHandlers) where
+module Humblr.Workers.Frontend (frontendHandlers, JSObject (..), JSHandlers) where
 
 import Control.Concurrent.Async (wait)
 import Control.Exception (someExceptionContext)
@@ -53,7 +53,7 @@ type Frontend = FetchHandler FrontendEnv
 frontendHandlers :: IO JSHandlers
 frontendHandlers = toJSHandlers Handlers {fetch = frontend}
 
-frontend :: Frontend
+frontend :: (HasCallStack) => Frontend
 frontend req env ctx = handleAny reportError do
   meth <- CI.mk <$> toHaskellByteString (Req.getMethod req)
   unless (meth == "GET") $ throwCode 405 "Method Not Allowed"

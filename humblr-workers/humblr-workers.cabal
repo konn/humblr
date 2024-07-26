@@ -37,6 +37,10 @@ common defaults
     -Wredundant-constraints
     -Wunused-packages
 
+  if !os(wasi)
+    ghc-options:
+      -fplugin
+      GHC.Wasm.FFI.Plugin
   default-language: GHC2021
   build-depends: base >=4.7 && <5
 
@@ -58,22 +62,24 @@ library
     wasm-linear-base,
     web-sys-hs,
 
-  if !os(wasi)
-    ghc-options:
-      -fplugin
-      GHC.Wasm.FFI.Plugin
   hs-source-dirs: src
   -- cabal-gild: discover src --exclude=src/**/Internal.hs --exclude=src/**/Internal/**/*.hs
   exposed-modules: Humblr.Workers.Frontend
   -- cabal-gild: discover src --include=src/**/Internal.hs --include=src/**/Internal/**/*.hs
   other-modules:
 
-executable humblr-workers
+executable humblr-frontend
   import: defaults
-  hs-source-dirs: app
+  hs-source-dirs: app/frontend
   main-is: Main.hs
-  -- cabal-gild: discover app --exclude=app/Main.hs
+  -- cabal-gild: discover app/frontend --exclude=app/frontend/Main.hs
   other-modules:
+
+  if os(wasi)
+    ghc-options:
+      -no-hs-main
+      -optl-mexec-model=reactor
+      "-optl-Wl,--export=handlers"
   build-depends: humblr-workers
 
 test-suite humblr-workers-test

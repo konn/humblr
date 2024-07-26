@@ -55,12 +55,12 @@ patch-jsffi-for-cf:
   ARG wasm=${outdir}.wasm
   COPY  (+optimised-wasm/dist --target=${target} --outdir=${outdir} --wasm=${wasm}) ./dist
   LET PATCHER=./js-ffi-patcher.mjs
-  COPY ./cloudflare-kv-manager/data/jsffi-patcher.mjs ${PATCHER}
+  COPY ./humblr-workers/data/jsffi-patcher.mjs ${PATCHER}
   RUN node ${PATCHER} ./dist/ghc_wasm_jsffi.js
   SAVE ARTIFACT ./dist
 
-main:
-  COPY cloudflare-kv-manager/data/worker-template/ ./dist/
-  COPY (+patch-jsffi-for-cf/dist --target=cloudflare-kv-manager:exe:cloudflare-kv-manager --wasm=handlers.wasm) ./dist/src
+frontend:
+  COPY humblr-workers/data/worker-template/ ./dist/
+  COPY (+patch-jsffi-for-cf/dist --target=humblr-workers:exe:humblr-frontend --wasm=handlers.wasm) ./dist/src
   RUN cd ./dist && npm i
-  SAVE ARTIFACT ./dist AS LOCAL _build/
+  SAVE ARTIFACT ./dist AS LOCAL _build/frontend
