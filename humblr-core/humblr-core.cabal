@@ -37,25 +37,23 @@ common defaults
     -Wredundant-constraints
     -Wunused-packages
 
-  default-language: Haskell2010
+  default-language: GHC2021
   build-depends: base >=4.7 && <5
 
 library
   import: defaults
+  build-depends:
+    aeson,
+    bytestring,
+    containers,
+    text,
+    time,
+
   hs-source-dirs: src
   -- cabal-gild: discover src --exclude=src/**/Internal.hs --exclude=src/**/Internal/**/*.hs
-  exposed-modules: Lib
+  exposed-modules: Humblr.Types
   -- cabal-gild: discover src --include=src/**/Internal.hs --include=src/**/Internal/**/*.hs
   other-modules:
-
-executable humblr-core
-  import: defaults
-  hs-source-dirs: app
-  main-is: Main.hs
-  -- cabal-gild: discover app --exclude=app/Main.hs
-  other-modules:
-  ghc-options: -O2
-  build-depends: humblr-core
 
 test-suite humblr-core-test
   import: defaults

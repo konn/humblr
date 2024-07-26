@@ -7,6 +7,8 @@
 {-# LANGUAGE LinearTypes #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
@@ -15,24 +17,30 @@ module Humblr.Workers.Frontend (frontendHandlers, JSObject (..), JSHandlers) whe
 import Control.Concurrent.Async (wait)
 import Control.Exception (someExceptionContext)
 import Control.Exception.Context (displayExceptionContext)
-import Control.Exception.Safe (Exception (..), SomeException (..), handleAny, throwIO)
+import Control.Exception.Safe (Exception (..), SomeException (..), handleAny, throwIO, throwString)
 import Control.Monad
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BS8
 import Data.CaseInsensitive qualified as CI
+import Data.Coerce (coerce)
+import Data.Either (partitionEithers)
+import Data.Functor ((<&>))
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromJust)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Unsafe (unsafeDupablePerformIO)
-import Data.Word (Word16)
+import Data.Time (UTCTime)
+import Data.Vector qualified as V
 import GHC.Generics (Generic)
 import GHC.Stack
 import GHC.Wasm.Object.Builtins
 import GHC.Word
+import Humblr.Types (Article (..))
 import Network.Cloudflare.Worker.Binding
 import Network.Cloudflare.Worker.Binding.Cache qualified as Cache
-import Network.Cloudflare.Worker.Binding.D1 (D1Class, FromD1Row, FromD1Value, ToD1Row, ToD1Value)
+import Network.Cloudflare.Worker.Binding.D1 (D1, D1Class, FromD1Row, FromD1Value, ToD1Row, ToD1Value)
+import Network.Cloudflare.Worker.Binding.D1 qualified as D1
 import Network.Cloudflare.Worker.Binding.R2 (R2Class)
 import Network.Cloudflare.Worker.Binding.R2 qualified as R2
 import Network.Cloudflare.Worker.Handler
@@ -137,14 +145,112 @@ newtype ArticleId = ArticleId {articleId :: Word32}
   deriving (Show, Eq, Ord, Generic)
   deriving newtype (FromD1Value, ToD1Value)
 
-data Tag = Tag {id :: !TagId, name :: !T.Text}
+data TagRow = TagRow {id :: !TagId, name :: !T.Text}
   deriving (Show, Eq, Ord, Generic)
   deriving anyclass (FromD1Row, ToD1Row)
 
-data ArticleTag = ArticleTag {articleId :: !ArticleId, tagId :: !TagId}
+data ArticleTagRow = ArticleTagRow {id :: !Word32, article :: !ArticleId, tag :: !TagId}
   deriving (Show, Eq, Ord, Generic)
   deriving anyclass (FromD1Row, ToD1Row)
 
-data Article = Article {id :: !ArticleId, title :: !T.Text, body :: !T.Text}
+data ArticleRow = ArticleRow
+  { id :: !ArticleId
+  , title :: !T.Text
+  , body :: !T.Text
+  , createdAt :: !UTCTime
+  , lastUpdate :: !UTCTime
+  , slug :: !T.Text
+  }
   deriving (Show, Eq, Ord, Generic)
   deriving anyclass (FromD1Row, ToD1Row)
+
+type family xs ~> a where
+  '[] ~> a = a
+  (x ': xs) ~> a = x -> (xs ~> a)
+
+newtype Preparation params = Preparation (params ~> IO D1.Statement)
+
+bind :: Preparation params -> params ~> IO D1.Statement
+bind (Preparation f) = f
+
+data PresetQueries = PresetQueries
+  { tryInsertTag :: !(Preparation '[T.Text])
+  , lookupTagName :: !(Preparation '[T.Text])
+  , articleTags :: !(Preparation '[ArticleId])
+  }
+
+newtype TryInsertTagQ = TryInsertTagQ {prepared :: D1.PreparedStatement}
+
+newtype LookupTagNameQ = LookupTagNameQ {prepared :: D1.PreparedStatement}
+
+mkTryInsertTagQ :: D1 -> IO (Preparation '[T.Text])
+mkTryInsertTagQ d1 =
+  D1.prepare d1 "INSERT OR IGNORE INTO tags (name) VALUES (?)"
+    <&> \prep -> Preparation \name ->
+      D1.bind prep (V.singleton $ D1.toD1ValueView name)
+
+mkLookupTagNameQ :: D1 -> IO (Preparation '[T.Text])
+mkLookupTagNameQ d1 =
+  D1.prepare d1 "SELECT * FROM tags WHERE name = ?" <&> \prep ->
+    Preparation \name ->
+      D1.bind prep (V.singleton $ D1.toD1ValueView name)
+
+mkArticleTagsQ :: D1 -> IO (Preparation '[ArticleId])
+mkArticleTagsQ d1 =
+  D1.prepare d1 "SELECT tag.name FROM tags tag INNER JOIN articleTags assoc ON tag.id = assoc.tag WHERE assoc.article = ?" <&> \prep ->
+    Preparation \aid ->
+      D1.bind prep (V.singleton $ D1.toD1ValueView aid)
+
+data AppException = AppException !T.Text
+  deriving (Show, Eq, Ord, Generic)
+  deriving anyclass (Exception)
+
+newtype TagName = TagName {name :: T.Text}
+  deriving (Show, Eq, Ord, Generic)
+  deriving anyclass (FromD1Row)
+
+getTagName :: TagName -> T.Text
+getTagName = coerce
+
+fromArticleRow :: (HasCallStack) => PresetQueries -> ArticleRow -> IO Article
+fromArticleRow qs arow = do
+  rows <- wait =<< D1.all =<< bind qs.articleTags arow.id
+  unless rows.success $
+    throwString "Failed to fetch tags for article"
+  let (fails, tags) = partitionEithers $ map (fmap getTagName . D1.parseD1RowView) $ V.toList rows.results
+  unless (null fails) $
+    throwString $
+      "Failed to parse tag row: " <> show fails
+  pure
+    Article
+      { title = arow.title
+      , body = arow.body
+      , slug = arow.slug
+      , updatedAt = arow.lastUpdate
+      , createdAt = arow.createdAt
+      , id = arow.id.articleId
+      , tags
+      }
+
+makeSureTagExists :: (HasCallStack) => PresetQueries -> D1 -> T.Text -> IO TagRow
+makeSureTagExists qs d1 tag = do
+  rows <-
+    wait
+      =<< D1.batch d1 . V.fromList
+      =<< sequenceA
+        [ bind qs.tryInsertTag tag
+        , bind qs.lookupTagName tag
+        ]
+  let resl = V.last rows
+  unless resl.success $
+    throwString "Failed to lookup tag"
+  when (V.null resl.results) $
+    throwString "No corresponding tag found!"
+  case D1.parseD1RowView $ V.head resl.results of
+    Right t -> pure t
+    Left err ->
+      throwString $
+        "Failed to parse tag row: "
+          <> show (V.head resl.results)
+          <> "\nReason: "
+          <> err
