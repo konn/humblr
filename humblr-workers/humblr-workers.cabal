@@ -47,6 +47,7 @@ library
     bytestring,
     case-insensitive,
     cloudflare-worker,
+    containers,
     ghc-wasm-compat,
     ghc-wasm-jsobjects,
     http-media,
