@@ -50,8 +50,8 @@ library
     containers,
     ghc-wasm-compat,
     ghc-wasm-jsobjects,
-    http-media,
     http-types,
+    mime-types,
     network-uri,
     safe-exceptions,
     text,
@@ -64,7 +64,7 @@ library
       GHC.Wasm.FFI.Plugin
   hs-source-dirs: src
   -- cabal-gild: discover src --exclude=src/**/Internal.hs --exclude=src/**/Internal/**/*.hs
-  exposed-modules: Lib
+  exposed-modules: Humblr.Workers.Frontend
   -- cabal-gild: discover src --include=src/**/Internal.hs --include=src/**/Internal/**/*.hs
   other-modules:
 
