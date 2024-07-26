@@ -70,7 +70,7 @@ frontend req env ctx = handleAny reportError do
       objBody <-
         maybe (throwCode 404 $ "Not Found: " <> TE.decodeUtf8 rawPathInfo) pure
           =<< wait
-          =<< R2.get r2 rawPathInfo
+          =<< R2.get r2 (BS8.dropWhile (== '/') rawPathInfo)
       src <- R2.getBody objBody
       let etag = R2.getObjectHTTPETag objBody
       hdrs <-
