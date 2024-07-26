@@ -61,18 +61,20 @@ frontend req env ctx = handleAny reportError do
   let uri = fromJust $ parseURI $ T.unpack $ Req.getUrl req
       rawPathInfo = BS8.pack uri.uriPath
       pathInfo = decodePathSegments rawPathInfo
-      ctype = defaultMimeLookup $ last pathInfo
+      objPath = BS8.dropWhile (== '/') rawPathInfo
   mcache <- fmap fromNullable . await =<< Cache.match (inject req) Nothing
   case mcache of
-    Just rsp -> pure rsp
+    Just rsp -> do
+      pure rsp
     Nothing -> do
       let r2 = getBinding "R2" env
       objBody <-
-        maybe (throwCode 404 $ "Not Found: " <> TE.decodeUtf8 rawPathInfo) pure
+        maybe (throwCode 404 $ "404 Not Found: " <> TE.decodeUtf8 objPath) pure
           =<< wait
-          =<< R2.get r2 (BS8.dropWhile (== '/') rawPathInfo)
+          =<< R2.get r2 objPath
       src <- R2.getBody objBody
       let etag = R2.getObjectHTTPETag objBody
+          ctype = defaultMimeLookup $ last pathInfo
       hdrs <-
         Resp.toHeaders $
           Map.fromList
@@ -80,6 +82,7 @@ frontend req env ctx = handleAny reportError do
             , ("Cache-Control", "public, max-age=3600")
             , ("Content-Type", ctype)
             ]
+      empty <- emptyObject
       resp <-
         Resp.newResponse' (Just $ inject src) $
           Just $
@@ -88,7 +91,7 @@ frontend req env ctx = handleAny reportError do
                   PL.. setPartialField "status" (toJSPrim 200)
                   PL.. setPartialField "headers" (inject hdrs)
                   PL.. setPartialField "encodeBody" (fromBS "automatic")
-                  PL.. setPartialField "cf" (upcast jsNull)
+                  PL.. setPartialField "cf" empty
               )
       waitUntil ctx =<< Cache.put req resp
       pure resp
