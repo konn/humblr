@@ -250,7 +250,7 @@ constraints:
 source-repository-package
   type: git
   location: https://github.com/konn/ghc-wasm-earthly
-  tag: 19f9ee2569c49b82cdbdb5fe709c885af56dc531
+  tag: da00277cb0febe45ba1527a44f96a9cf4a97523a
   subdir:
     cloudflare-worker
     ghc-wasm-compat
