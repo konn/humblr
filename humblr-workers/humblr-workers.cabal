@@ -37,12 +37,30 @@ common defaults
     -Wredundant-constraints
     -Wunused-packages
 
-  default-language: Haskell2010
+  default-language: GHC2021
   build-depends: base >=4.7 && <5
 
 library
   import: defaults
-  build-depends: cloudflare-worker
+  build-depends:
+    async,
+    bytestring,
+    case-insensitive,
+    cloudflare-worker,
+    ghc-wasm-compat,
+    ghc-wasm-jsobjects,
+    http-media,
+    http-types,
+    network-uri,
+    safe-exceptions,
+    text,
+    wasm-linear-base,
+    web-sys-hs,
+
+  if !os(wasi)
+    ghc-options:
+      -fplugin
+      GHC.Wasm.FFI.Plugin
   hs-source-dirs: src
   -- cabal-gild: discover src --exclude=src/**/Internal.hs --exclude=src/**/Internal/**/*.hs
   exposed-modules: Lib
