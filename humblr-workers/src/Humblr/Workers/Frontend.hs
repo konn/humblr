@@ -246,18 +246,15 @@ serveStatic req env ctx rawPathInfo pathInfo = do
     v' <- fromHaskellByteString v
     Headers.js_fun_set_ByteString_ByteString_undefined hdrs k' v'
   empty <- emptyObject
-  resp <-
-    Resp.newResponse' (Just $ inject src) $
-      Just $
-        newDictionary
-          ( setPartialField "statusText" (fromBS "OK")
-              PL.. setPartialField "status" (toJSPrim 200)
-              PL.. setPartialField "headers" (inject hdrs)
-              PL.. setPartialField "encodeBody" (fromBS "automatic")
-              PL.. setPartialField "cf" empty
-          )
-  waitUntil ctx =<< Cache.put req resp
-  pure resp
+  Resp.newResponse' (Just $ inject src) $
+    Just $
+      newDictionary
+        ( setPartialField "statusText" (fromBS "OK")
+            PL.. setPartialField "status" (toJSPrim 200)
+            PL.. setPartialField "headers" (inject hdrs)
+            PL.. setPartialField "encodeBody" (fromBS "automatic")
+            PL.. setPartialField "cf" empty
+        )
 
 fromBS :: BS.ByteString -> JSObject JSByteStringClass
 {-# NOINLINE fromBS #-}

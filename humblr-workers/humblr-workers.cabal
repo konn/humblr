@@ -60,6 +60,7 @@ library
     http-types,
     humblr-core,
     lens,
+    lucid2,
     mime-types,
     network-uri,
     safe-exceptions,
