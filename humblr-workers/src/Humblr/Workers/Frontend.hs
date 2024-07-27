@@ -5,6 +5,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE LinearTypes #-}
+{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -18,6 +19,7 @@ import Control.Concurrent.Async (Async, async, wait)
 import Control.Exception (someExceptionContext)
 import Control.Exception.Context (displayExceptionContext)
 import Control.Exception.Safe (Exception (..), SomeException (..), handleAny, throwIO, throwString)
+import Control.Lens ((.~))
 import Control.Monad
 import Data.Aeson qualified as J
 import Data.ByteString qualified as BS
@@ -27,7 +29,9 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.CaseInsensitive qualified as CI
 import Data.Coerce (coerce)
 import Data.Either (partitionEithers)
+import Data.Function ((&))
 import Data.Functor ((<&>))
+import Data.Generics.Labels ()
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Text qualified as T
@@ -40,9 +44,8 @@ import GHC.Stack
 import GHC.Wasm.Object.Builtins
 import GHC.Wasm.Prim
 import GHC.Wasm.Web.Generated.Headers qualified as Headers
-import GHC.Wasm.Web.ReadableStream (toReadableStream)
 import GHC.Word
-import Humblr.Types (Article (..), ArticleSummary (..))
+import Humblr.Types (Article (..))
 import Network.Cloudflare.Worker.Binding
 import Network.Cloudflare.Worker.Binding.Cache qualified as Cache
 import Network.Cloudflare.Worker.Binding.D1 (D1, D1Class, FromD1Row, FromD1Value, ToD1Row, ToD1Value)
@@ -52,12 +55,10 @@ import Network.Cloudflare.Worker.Binding.R2 qualified as R2
 import Network.Cloudflare.Worker.Handler
 import Network.Cloudflare.Worker.Handler.Fetch (FetchContext, FetchHandler, waitUntil)
 import Network.Cloudflare.Worker.Request qualified as Req
-import Network.Cloudflare.Worker.Response (newResponse')
 import Network.Cloudflare.Worker.Response qualified as Resp
 import Network.HTTP.Types.URI (decodePathSegments, encodePathSegmentsRelative, parseSimpleQuery)
 import Network.Mime (defaultMimeLookup)
 import Network.URI
-import Streaming.ByteString qualified as Q
 import Text.Read (readMaybe)
 import Wasm.Prelude.Linear qualified as PL
 
@@ -93,21 +94,93 @@ frontend req env ctx = handleAny reportError do
   let uri = fromJust $ parseURI $ T.unpack $ Req.getUrl req
       rawPathInfo = BS8.pack uri.uriPath
       pathInfo = decodePathSegments rawPathInfo
-  mcache <- fmap fromNullable . await =<< Cache.match (inject req) Nothing
+  case pathInfo of
+    ["tag", t] ->
+      serveCached
+        CacheOptions
+          { cacheTTL = 3600 * 24
+          , onlyOk = True
+          , includeQuery = True
+          }
+        req
+        ctx
+        uri
+        $ serveTagPage env ctx uri t
+    ["article", slug] ->
+      serveCached
+        CacheOptions
+          { cacheTTL = 3600 * 24
+          , onlyOk = True
+          , includeQuery = True
+          }
+        req
+        ctx
+        uri
+        $ serveArticle req env ctx slug
+    "static" : rest ->
+      serveCached
+        CacheOptions
+          { cacheTTL = 3600 * 24 * 31
+          , onlyOk = True
+          , includeQuery = True
+          }
+        req
+        ctx
+        uri
+        $ serveStatic
+          req
+          env
+          ctx
+          (LBS.toStrict $ BB.toLazyByteString $ encodePathSegmentsRelative rest)
+          rest
+    _ -> throwCode 404 $ "Not Found: " <> TE.decodeUtf8 rawPathInfo
+
+data CacheOptions = CacheOptions
+  { cacheTTL :: !Word32
+  , onlyOk :: !Bool
+  , includeQuery :: !Bool
+  }
+  deriving (Show, Eq, Ord, Generic)
+
+serveCached ::
+  CacheOptions ->
+  Req.WorkerRequest ->
+  FetchContext ->
+  URI ->
+  IO Resp.WorkerResponse ->
+  IO Resp.WorkerResponse
+serveCached opts req ctx uri act = do
+  let cachePath =
+        T.pack $
+          show $
+            uri
+              & #uriFragment .~ ""
+              & if opts.includeQuery then id else #uriQuery .~ ""
+  reqHdrs0 <- Resp.toHeaders $ Map.fromList (Req.getHeaders req)
+  keyReq <-
+    Req.newRequest (Just cachePath) $
+      Just $
+        newDictionary
+          PL.$ setPartialField "headers" (upcast reqHdrs0)
+  mcache <- fmap fromNullable . await =<< Cache.match (inject keyReq) Nothing
   case mcache of
-    Just rsp -> pure rsp
-    Nothing ->
-      case pathInfo of
-        ["tag", t] -> serveTagPage env ctx uri t
-        ["article", slug] -> serveArticle req env ctx slug
-        "static" : rest ->
-          serveStatic
-            req
-            env
-            ctx
-            (LBS.toStrict $ BB.toLazyByteString $ encodePathSegmentsRelative rest)
-            rest
-        _ -> throwCode 404 $ "Not Found: " <> TE.decodeUtf8 rawPathInfo
+    Just resp -> pure resp
+    Nothing -> do
+      resp <- act
+      code <- Resp.getStatus resp
+      when (not opts.onlyOk && code == 200) do
+        respHdrs0 <- Resp.getHeaders resp
+        cacheControlHdr <- fromHaskellByteString "Cache-Control"
+        cacheControl <-
+          fromHaskellByteString $
+            "public, max-age=" <> BS8.pack (show opts.cacheTTL)
+        Headers.js_fun_set_ByteString_ByteString_undefined
+          respHdrs0
+          cacheControlHdr
+          cacheControl
+        Resp.setHeaders resp respHdrs0
+        waitUntil ctx =<< Cache.put keyReq resp
+      pure resp
 
 serveArticle ::
   Req.WorkerRequest ->
@@ -154,7 +227,6 @@ serveStatic req env ctx rawPathInfo pathInfo = do
   R2.writeObjectHttpMetadata objBody hdrs
   let cacheHdrs =
         [ ("ETag", etag)
-        , ("Cache-Control", "public, max-age=3600")
         , ("Content-Type", ctype)
         ]
   forM_ cacheHdrs $ \(k, v) -> do
