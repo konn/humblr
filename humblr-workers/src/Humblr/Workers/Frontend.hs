@@ -14,18 +14,22 @@
 
 module Humblr.Workers.Frontend (frontendHandlers, JSObject (..), JSHandlers) where
 
-import Control.Concurrent.Async (wait)
+import Control.Concurrent.Async (Async, async, wait)
 import Control.Exception (someExceptionContext)
 import Control.Exception.Context (displayExceptionContext)
 import Control.Exception.Safe (Exception (..), SomeException (..), handleAny, throwIO, throwString)
 import Control.Monad
+import Data.Aeson qualified as J
 import Data.ByteString qualified as BS
+import Data.ByteString.Builder qualified as BB
 import Data.ByteString.Char8 qualified as BS8
+import Data.ByteString.Lazy qualified as LBS
 import Data.CaseInsensitive qualified as CI
 import Data.Coerce (coerce)
 import Data.Either (partitionEithers)
 import Data.Functor ((<&>))
-import Data.Maybe (fromJust)
+import Data.Map.Strict qualified as Map
+import Data.Maybe (fromJust, fromMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Unsafe (unsafeDupablePerformIO)
@@ -36,8 +40,9 @@ import GHC.Stack
 import GHC.Wasm.Object.Builtins
 import GHC.Wasm.Prim
 import GHC.Wasm.Web.Generated.Headers qualified as Headers
+import GHC.Wasm.Web.ReadableStream (toReadableStream)
 import GHC.Word
-import Humblr.Types (Article (..))
+import Humblr.Types (Article (..), ArticleSummary (..))
 import Network.Cloudflare.Worker.Binding
 import Network.Cloudflare.Worker.Binding.Cache qualified as Cache
 import Network.Cloudflare.Worker.Binding.D1 (D1, D1Class, FromD1Row, FromD1Value, ToD1Row, ToD1Value)
@@ -45,12 +50,15 @@ import Network.Cloudflare.Worker.Binding.D1 qualified as D1
 import Network.Cloudflare.Worker.Binding.R2 (R2Class)
 import Network.Cloudflare.Worker.Binding.R2 qualified as R2
 import Network.Cloudflare.Worker.Handler
-import Network.Cloudflare.Worker.Handler.Fetch (FetchHandler, waitUntil)
+import Network.Cloudflare.Worker.Handler.Fetch (FetchContext, FetchHandler, waitUntil)
 import Network.Cloudflare.Worker.Request qualified as Req
+import Network.Cloudflare.Worker.Response (newResponse')
 import Network.Cloudflare.Worker.Response qualified as Resp
-import Network.HTTP.Types.URI (decodePathSegments)
+import Network.HTTP.Types.URI (decodePathSegments, encodePathSegmentsRelative, parseSimpleQuery)
 import Network.Mime (defaultMimeLookup)
 import Network.URI
+import Streaming.ByteString qualified as Q
+import Text.Read (readMaybe)
 import Wasm.Prelude.Linear qualified as PL
 
 type FrontendEnv =
@@ -66,6 +74,18 @@ type Frontend = FetchHandler FrontendEnv
 frontendHandlers :: IO JSHandlers
 frontendHandlers = toJSHandlers Handlers {fetch = frontend}
 
+getPathOrIndex :: R2.R2 -> BS.ByteString -> IO (Async (Maybe R2.R2ObjectBody))
+getPathOrIndex r2 key
+  | "/" `BS8.isSuffixOf` key = R2.get r2 $ key <> "index.html"
+  | otherwise = do
+      future <- R2.get r2 key
+      async do
+        mobj <- wait future
+        case mobj of
+          Just a -> pure $ Just a
+          Nothing ->
+            wait =<< R2.get r2 (BS8.dropWhileEnd (== '/') key <> "/index.html")
+
 frontend :: (HasCallStack) => Frontend
 frontend req env ctx = handleAny reportError do
   meth <- CI.mk <$> toHaskellByteString (Req.getMethod req)
@@ -73,44 +93,87 @@ frontend req env ctx = handleAny reportError do
   let uri = fromJust $ parseURI $ T.unpack $ Req.getUrl req
       rawPathInfo = BS8.pack uri.uriPath
       pathInfo = decodePathSegments rawPathInfo
-      objPath = BS8.dropWhile (== '/') rawPathInfo
   mcache <- fmap fromNullable . await =<< Cache.match (inject req) Nothing
   case mcache of
-    Just rsp -> do
-      pure rsp
-    Nothing -> do
-      let r2 = getBinding "R2" env
-      objBody <-
-        maybe (throwCode 404 $ "404 Not Found: " <> TE.decodeUtf8 objPath) pure
-          =<< wait
-          =<< R2.get r2 objPath
-      src <- R2.getBody objBody
-      let etag = R2.getObjectHTTPETag objBody
-          ctype = defaultMimeLookup $ last pathInfo
-      hdrs <- Resp.toHeaders mempty
-      R2.writeObjectHttpMetadata objBody hdrs
-      let cacheHdrs =
-            [ ("ETag", etag)
-            , ("Cache-Control", "public, max-age=3600")
-            , ("Content-Type", ctype)
-            ]
-      forM_ cacheHdrs $ \(k, v) -> do
-        k' <- fromHaskellByteString k
-        v' <- fromHaskellByteString v
-        Headers.js_fun_set_ByteString_ByteString_undefined hdrs k' v'
-      empty <- emptyObject
-      resp <-
-        Resp.newResponse' (Just $ inject src) $
-          Just $
-            newDictionary
-              ( setPartialField "statusText" (fromBS "OK")
-                  PL.. setPartialField "status" (toJSPrim 200)
-                  PL.. setPartialField "headers" (inject hdrs)
-                  PL.. setPartialField "encodeBody" (fromBS "automatic")
-                  PL.. setPartialField "cf" empty
-              )
-      waitUntil ctx =<< Cache.put req resp
-      pure resp
+    Just rsp -> pure rsp
+    Nothing ->
+      case pathInfo of
+        ["tag", t] -> serveTagPage env ctx uri t
+        ["article", slug] -> serveArticle req env ctx slug
+        "static" : rest ->
+          serveStatic
+            req
+            env
+            ctx
+            (LBS.toStrict $ BB.toLazyByteString $ encodePathSegmentsRelative rest)
+            rest
+        _ -> throwCode 404 $ "Not Found: " <> TE.decodeUtf8 rawPathInfo
+
+serveArticle ::
+  Req.WorkerRequest ->
+  JSObject FrontendEnv ->
+  FetchContext ->
+  T.Text ->
+  IO Resp.WorkerResponse
+serveArticle = undefined
+
+serveTagPage ::
+  JSObject FrontendEnv ->
+  FetchContext ->
+  URI ->
+  T.Text ->
+  IO Resp.WorkerResponse
+serveTagPage env _ctx uri tag = do
+  let d1 = getBinding "D1" env
+      mpage = do
+        mraw <- lookup "page" $ parseSimpleQuery $ BS8.pack $ uri.uriQuery
+        readMaybe $ BS8.unpack mraw
+  qs <- getPresetQueries d1
+  arts <- getArticlesWithTag qs tag mpage
+  let body = TE.decodeUtf8 $ LBS.toStrict $ J.encode arts
+  Resp.newResponse
+    Resp.SimpleResponseInit
+      { status = 200
+      , statusText = "OK"
+      , body = body
+      , headers = Map.fromList [("Content-Type", "application/json")]
+      }
+
+serveStatic :: Req.WorkerRequest -> JSObject FrontendEnv -> FetchContext -> BS8.ByteString -> [T.Text] -> IO Resp.WorkerResponse
+serveStatic req env ctx rawPathInfo pathInfo = do
+  let objPath = BS8.dropWhile (== '/') rawPathInfo
+      r2 = getBinding "R2" env
+  objBody <-
+    maybe (throwCode 404 $ "404 Not Found: " <> TE.decodeUtf8 objPath) pure
+      =<< wait
+      =<< getPathOrIndex r2 objPath
+  src <- R2.getBody objBody
+  let etag = R2.getObjectHTTPETag objBody
+      ctype = defaultMimeLookup $ last pathInfo
+  hdrs <- Resp.toHeaders mempty
+  R2.writeObjectHttpMetadata objBody hdrs
+  let cacheHdrs =
+        [ ("ETag", etag)
+        , ("Cache-Control", "public, max-age=3600")
+        , ("Content-Type", ctype)
+        ]
+  forM_ cacheHdrs $ \(k, v) -> do
+    k' <- fromHaskellByteString k
+    v' <- fromHaskellByteString v
+    Headers.js_fun_set_ByteString_ByteString_undefined hdrs k' v'
+  empty <- emptyObject
+  resp <-
+    Resp.newResponse' (Just $ inject src) $
+      Just $
+        newDictionary
+          ( setPartialField "statusText" (fromBS "OK")
+              PL.. setPartialField "status" (toJSPrim 200)
+              PL.. setPartialField "headers" (inject hdrs)
+              PL.. setPartialField "encodeBody" (fromBS "automatic")
+              PL.. setPartialField "cf" empty
+          )
+  waitUntil ctx =<< Cache.put req resp
+  pure resp
 
 fromBS :: BS.ByteString -> JSObject JSByteStringClass
 {-# NOINLINE fromBS #-}
@@ -184,11 +247,37 @@ data PresetQueries = PresetQueries
   , articleTags :: !(Preparation '[ArticleId])
   , insertArticle :: !(Preparation '[Article])
   , tagArticle :: !(Preparation '[ArticleId, TagId])
+  , articleWithTags :: !(Preparation '[T.Text, Word32])
+  , lookupFromSlug :: !(Preparation '[T.Text])
   }
 
-newtype TryInsertTagQ = TryInsertTagQ {prepared :: D1.PreparedStatement}
+getPresetQueries :: D1 -> IO PresetQueries
+getPresetQueries d1 = do
+  tryInsertTag <- mkTryInsertTagQ d1
+  lookupTagName <- mkLookupTagNameQ d1
+  articleTags <- mkArticleTagsQ d1
+  insertArticle <- mkInsertArticleQ d1
+  tagArticle <- mkTagArticleQ d1
+  articleWithTags <- mkArticleWithTagsQ d1
+  lookupFromSlug <- mkLookupSlugQ d1
+  pure PresetQueries {..}
 
-newtype LookupTagNameQ = LookupTagNameQ {prepared :: D1.PreparedStatement}
+mkLookupSlugQ :: D1 -> IO (Preparation '[T.Text])
+mkLookupSlugQ d1 =
+  D1.prepare d1 "SELECT * FROM articles WHERE slug = ?" <&> \prep ->
+    Preparation \slug ->
+      D1.bind prep (V.singleton $ D1.toD1ValueView slug)
+
+lookupSlug :: (HasCallStack) => PresetQueries -> T.Text -> IO (Maybe ArticleRow)
+lookupSlug qs slug = do
+  mrow <-
+    wait
+      =<< D1.first
+      =<< bind qs.lookupFromSlug slug
+  forM mrow $ \row -> do
+    case D1.parseD1RowView row of
+      Right r -> pure r
+      Left err -> throwString err
 
 mkTryInsertTagQ :: D1 -> IO (Preparation '[T.Text])
 mkTryInsertTagQ d1 =
@@ -230,6 +319,27 @@ mkTagArticleQ d1 =
           [ D1.toD1ValueView aid
           , D1.toD1ValueView tid
           ]
+
+mkArticleWithTagsQ :: D1 -> IO (Preparation '[T.Text, Word32])
+mkArticleWithTagsQ d1 =
+  D1.prepare d1 "SELECT a.* FROM articles a INNER JOIN articleTags at ON a.id = at.article INNER JOIN tags t ON at.tag = t.id WHERE t.name = ?1 ORDER BY a.createdAt DESC LIMIT 10 OFFSET ?2" <&> \prep ->
+    Preparation \name page ->
+      D1.bind prep (V.fromList [D1.toD1ValueView name, D1.toD1ValueView $ page * 10])
+
+getArticlesWithTag :: (HasCallStack) => PresetQueries -> T.Text -> Maybe Word32 -> IO [Article]
+getArticlesWithTag qs tag mpage = do
+  rows <-
+    wait
+      =<< D1.all
+      =<< bind qs.articleWithTags tag (fromMaybe 0 mpage)
+  unless rows.success $
+    throwString "Failed to fetch articles with tag"
+
+  let (fails, articles) = partitionEithers $ map D1.parseD1RowView $ V.toList rows.results
+  unless (null fails) $
+    throwString $
+      "Failed to parse article row: " <> show fails
+  mapM (fromArticleRow qs) articles
 
 data AppException = AppException !T.Text
   deriving (Show, Eq, Ord, Generic)

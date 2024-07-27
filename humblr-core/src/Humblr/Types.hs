@@ -4,7 +4,7 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
-module Humblr.Types (Article (..)) where
+module Humblr.Types (Article (..), ArticleSummary (..)) where
 
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Text qualified as T
@@ -18,6 +18,15 @@ data Article = Article
   , updatedAt :: !UTCTime
   , createdAt :: !UTCTime
   , tags :: ![T.Text]
+  }
+  deriving stock (Generic, Show)
+  deriving anyclass (FromJSON, ToJSON)
+
+data ArticleSummary = ArticleSummary
+  { title :: !T.Text
+  , slug :: !T.Text
+  , updatedAt :: !UTCTime
+  , createdAt :: !UTCTime
   }
   deriving stock (Generic, Show)
   deriving anyclass (FromJSON, ToJSON)

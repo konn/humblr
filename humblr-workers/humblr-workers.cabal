@@ -61,6 +61,8 @@ library
     mime-types,
     network-uri,
     safe-exceptions,
+    streaming,
+    streaming-bytestring,
     text,
     time,
     vector,
