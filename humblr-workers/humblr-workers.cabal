@@ -47,6 +47,7 @@ common defaults
 library
   import: defaults
   build-depends:
+    aeson,
     async,
     bytestring,
     case-insensitive,

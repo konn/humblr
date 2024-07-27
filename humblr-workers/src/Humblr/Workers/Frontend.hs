@@ -25,7 +25,6 @@ import Data.CaseInsensitive qualified as CI
 import Data.Coerce (coerce)
 import Data.Either (partitionEithers)
 import Data.Functor ((<&>))
-import Data.Map.Strict qualified as Map
 import Data.Maybe (fromJust)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -35,6 +34,8 @@ import Data.Vector qualified as V
 import GHC.Generics (Generic)
 import GHC.Stack
 import GHC.Wasm.Object.Builtins
+import GHC.Wasm.Prim
+import GHC.Wasm.Web.Generated.Headers qualified as Headers
 import GHC.Word
 import Humblr.Types (Article (..))
 import Network.Cloudflare.Worker.Binding
@@ -86,13 +87,17 @@ frontend req env ctx = handleAny reportError do
       src <- R2.getBody objBody
       let etag = R2.getObjectHTTPETag objBody
           ctype = defaultMimeLookup $ last pathInfo
-      hdrs <-
-        Resp.toHeaders $
-          Map.fromList
+      hdrs <- Resp.toHeaders mempty
+      R2.writeObjectHttpMetadata objBody hdrs
+      let cacheHdrs =
             [ ("ETag", etag)
             , ("Cache-Control", "public, max-age=3600")
             , ("Content-Type", ctype)
             ]
+      forM_ cacheHdrs $ \(k, v) -> do
+        k' <- fromHaskellByteString k
+        v' <- fromHaskellByteString v
+        Headers.js_fun_set_ByteString_ByteString_undefined hdrs k' v'
       empty <- emptyObject
       resp <-
         Resp.newResponse' (Just $ inject src) $
@@ -177,6 +182,8 @@ data PresetQueries = PresetQueries
   { tryInsertTag :: !(Preparation '[T.Text])
   , lookupTagName :: !(Preparation '[T.Text])
   , articleTags :: !(Preparation '[ArticleId])
+  , insertArticle :: !(Preparation '[Article])
+  , tagArticle :: !(Preparation '[ArticleId, TagId])
   }
 
 newtype TryInsertTagQ = TryInsertTagQ {prepared :: D1.PreparedStatement}
@@ -200,6 +207,29 @@ mkArticleTagsQ d1 =
   D1.prepare d1 "SELECT tag.name FROM tags tag INNER JOIN articleTags assoc ON tag.id = assoc.tag WHERE assoc.article = ?" <&> \prep ->
     Preparation \aid ->
       D1.bind prep (V.singleton $ D1.toD1ValueView aid)
+
+mkInsertArticleQ :: D1 -> IO (Preparation '[Article])
+mkInsertArticleQ d1 =
+  D1.prepare d1 "INSERT INTO articles (title, body, createdAt, lastUpdate, slug) VALUES (?1, ?2, ?3, ?4, ?5)" <&> \prep ->
+    Preparation \Article {..} ->
+      D1.bind prep $
+        V.fromList
+          [ D1.toD1ValueView title
+          , D1.toD1ValueView body
+          , D1.toD1ValueView createdAt
+          , D1.toD1ValueView updatedAt
+          , D1.toD1ValueView slug
+          ]
+
+mkTagArticleQ :: D1 -> IO (Preparation '[ArticleId, TagId])
+mkTagArticleQ d1 =
+  D1.prepare d1 "INSERT INTO articleTags (article, tag) VALUES (?1, ?2)" <&> \prep ->
+    Preparation \aid tid ->
+      D1.bind prep $
+        V.fromList
+          [ D1.toD1ValueView aid
+          , D1.toD1ValueView tid
+          ]
 
 data AppException = AppException !T.Text
   deriving (Show, Eq, Ord, Generic)
@@ -228,7 +258,6 @@ fromArticleRow qs arow = do
       , slug = arow.slug
       , updatedAt = arow.lastUpdate
       , createdAt = arow.createdAt
-      , id = arow.id.articleId
       , tags
       }
 
@@ -254,3 +283,9 @@ makeSureTagExists qs d1 tag = do
           <> show (V.head resl.results)
           <> "\nReason: "
           <> err
+
+consoleLog :: String -> IO ()
+consoleLog = js_console_log . toJSString
+
+foreign import javascript unsafe "console.log($1)"
+  js_console_log :: JSString -> IO ()
