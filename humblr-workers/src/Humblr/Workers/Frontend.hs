@@ -183,12 +183,24 @@ serveCached opts req ctx uri act = do
       pure resp
 
 serveArticle ::
+  (HasCallStack) =>
   Req.WorkerRequest ->
   JSObject FrontendEnv ->
   FetchContext ->
   T.Text ->
   IO Resp.WorkerResponse
-serveArticle = undefined
+serveArticle req env ctx slug = do
+  let d1 = getBinding "D1" env
+  qs <- getPresetQueries d1
+  art <- maybe (throwCode 404 $ "Blog Not Found: " <> slug) pure =<< lookupSlug qs slug
+  let body = TE.decodeUtf8 $ LBS.toStrict $ J.encode art
+  Resp.newResponse
+    Resp.SimpleResponseInit
+      { status = 200
+      , statusText = "OK"
+      , body = body
+      , headers = Map.fromList [("Content-Type", "application/json")]
+      }
 
 serveTagPage ::
   JSObject FrontendEnv ->
@@ -340,7 +352,7 @@ mkLookupSlugQ d1 =
     Preparation \slug ->
       D1.bind prep (V.singleton $ D1.toD1ValueView slug)
 
-lookupSlug :: (HasCallStack) => PresetQueries -> T.Text -> IO (Maybe ArticleRow)
+lookupSlug :: (HasCallStack) => PresetQueries -> T.Text -> IO (Maybe Article)
 lookupSlug qs slug = do
   mrow <-
     wait
@@ -348,7 +360,7 @@ lookupSlug qs slug = do
       =<< bind qs.lookupFromSlug slug
   forM mrow $ \row -> do
     case D1.parseD1RowView row of
-      Right r -> pure r
+      Right r -> fromArticleRow qs r
       Left err -> throwString err
 
 mkTryInsertTagQ :: D1 -> IO (Preparation '[T.Text])
