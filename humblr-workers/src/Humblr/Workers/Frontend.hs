@@ -36,8 +36,9 @@ import Data.Map.Strict qualified as Map
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Text.Lazy qualified as LT
 import Data.Text.Unsafe (unsafeDupablePerformIO)
-import Data.Time (UTCTime)
+import Data.Time (TimeZone (..), UTCTime)
 import Data.Vector qualified as V
 import GHC.Generics (Generic)
 import GHC.Stack
@@ -45,7 +46,9 @@ import GHC.Wasm.Object.Builtins
 import GHC.Wasm.Prim
 import GHC.Wasm.Web.Generated.Headers qualified as Headers
 import GHC.Word
+import Humblr.Html (RenderingOptions (..), articlePage, articleTable, toStandaloneHtml)
 import Humblr.Types (Article (..))
+import Lucid qualified as H
 import Network.Cloudflare.Worker.Binding
 import Network.Cloudflare.Worker.Binding.Cache qualified as Cache
 import Network.Cloudflare.Worker.Binding.D1 (D1, D1Class, FromD1Row, FromD1Value, ToD1Row, ToD1Value)
@@ -64,7 +67,7 @@ import Wasm.Prelude.Linear qualified as PL
 
 type FrontendEnv =
   BindingsClass
-    '[]
+    '["BASE_URL"]
     '[]
     '[ '("R2", R2Class)
      , '("D1", D1Class)
@@ -189,18 +192,42 @@ serveArticle ::
   FetchContext ->
   T.Text ->
   IO Resp.WorkerResponse
-serveArticle req env ctx slug = do
+serveArticle _req env _ctx slug = do
   let d1 = getBinding "D1" env
+      opts = toRenderingOpts $ getEnv "BASE_URL" env
   qs <- getPresetQueries d1
-  art <- maybe (throwCode 404 $ "Blog Not Found: " <> slug) pure =<< lookupSlug qs slug
-  let body = TE.decodeUtf8 $ LBS.toStrict $ J.encode art
+  art <- maybe (throwCode 404 $ "Article Not Found: " <> slug) pure =<< lookupSlug qs slug
+  let body =
+        LT.toStrict $
+          H.renderText $
+            toStandaloneHtml "Article" $
+              articlePage opts art
   Resp.newResponse
     Resp.SimpleResponseInit
       { status = 200
       , statusText = "OK"
       , body = body
-      , headers = Map.fromList [("Content-Type", "application/json")]
+      , headers = Map.fromList [("Content-Type", "text/html")]
       }
+
+toRenderingOpts :: J.Value -> RenderingOptions
+toRenderingOpts (J.String dom) =
+  RenderingOptions
+    { imageBase = dom <> "/" <> "static"
+    , articleBase = dom <> "/" <> "article"
+    , tagBase = dom <> "/" <> "tag"
+    , timeZone = jst
+    }
+toRenderingOpts _ =
+  RenderingOptions
+    { imageBase = "../static"
+    , articleBase = "../article"
+    , tagBase = "../tag"
+    , timeZone = jst
+    }
+
+jst :: TimeZone
+jst = TimeZone {timeZoneSummerOnly = False, timeZoneName = "JST", timeZoneMinutes = 9 * 60}
 
 serveTagPage ::
   JSObject FrontendEnv ->
@@ -215,13 +242,17 @@ serveTagPage env _ctx uri tag = do
         readMaybe $ BS8.unpack mraw
   qs <- getPresetQueries d1
   arts <- getArticlesWithTag qs tag mpage
-  let body = TE.decodeUtf8 $ LBS.toStrict $ J.encode arts
+  let body =
+        LT.toStrict $
+          H.renderText $
+            toStandaloneHtml ("Articles for #" <> tag) $
+              articleTable (toRenderingOpts $ getEnv "BASE_URL" env) arts
   Resp.newResponse
     Resp.SimpleResponseInit
       { status = 200
       , statusText = "OK"
       , body = body
-      , headers = Map.fromList [("Content-Type", "application/json")]
+      , headers = Map.fromList [("Content-Type", "text/html")]
       }
 
 serveStatic :: Req.WorkerRequest -> JSObject FrontendEnv -> FetchContext -> BS8.ByteString -> [T.Text] -> IO Resp.WorkerResponse
@@ -304,7 +335,6 @@ data ArticleTagRow = ArticleTagRow {id :: !Word32, article :: !ArticleId, tag ::
 
 data ArticleRow = ArticleRow
   { id :: !ArticleId
-  , title :: !T.Text
   , body :: !T.Text
   , createdAt :: !UTCTime
   , lastUpdate :: !UTCTime
@@ -380,12 +410,11 @@ mkArticleTagsQ d1 =
 
 mkInsertArticleQ :: D1 -> IO (Preparation '[Article])
 mkInsertArticleQ d1 =
-  D1.prepare d1 "INSERT INTO articles (title, body, createdAt, lastUpdate, slug) VALUES (?1, ?2, ?3, ?4, ?5)" <&> \prep ->
+  D1.prepare d1 "INSERT INTO articles (body, createdAt, lastUpdate, slug) VALUES (?1, ?2, ?3, ?4, ?5)" <&> \prep ->
     Preparation \Article {..} ->
       D1.bind prep $
         V.fromList
-          [ D1.toD1ValueView title
-          , D1.toD1ValueView body
+          [ D1.toD1ValueView body
           , D1.toD1ValueView createdAt
           , D1.toD1ValueView updatedAt
           , D1.toD1ValueView slug
@@ -444,8 +473,7 @@ fromArticleRow qs arow = do
       "Failed to parse tag row: " <> show fails
   pure
     Article
-      { title = arow.title
-      , body = arow.body
+      { body = arow.body
       , slug = arow.slug
       , updatedAt = arow.lastUpdate
       , createdAt = arow.createdAt
