@@ -197,6 +197,13 @@ serveCached opts req ctx uri act = do
         waitUntil ctx =<< Cache.put keyReq resp
       pure resp
 
+pageOptionTitle :: JSObject FrontendEnv -> T.Text -> PageOptions
+pageOptionTitle env title = PageOptions {siteName = "ごはんぶらー", topPage = fromTextValue $ getEnv "BASE_URL" env, title}
+
+fromTextValue :: J.Value -> T.Text
+fromTextValue (J.String t) = t
+fromTextValue a = TE.decodeUtf8 $ LBS.toStrict $ J.encode a
+
 serveTopPage :: JSObject FrontendEnv -> FetchContext -> IO Resp.WorkerResponse
 serveTopPage env _ctx = do
   let d1 = getBinding "D1" env
@@ -206,7 +213,7 @@ serveTopPage env _ctx = do
         LT.toStrict
           $ H.renderText
           $ toStandaloneHtml
-            PageOptions {siteName = "ごはんぶらー", title = "ごはんぶらー"}
+            (pageOptionTitle env "ごはんぶらー")
           $ articleTable (toRenderingOpts $ getEnv "BASE_URL" env) arts
   Resp.newResponse
     Resp.SimpleResponseInit
@@ -229,17 +236,14 @@ serveArticle _req env _ctx slug = do
   qs <- getPresetQueries d1
   art <- maybe (throwCode 404 $ "Article Not Found: " <> slug) pure =<< lookupSlug qs slug
   let !title =
-        maybe "記事" (T.take 20 . T.strip . nodeToPlainText) $
+        maybe "記事" (T.take 140 . T.strip . nodeToPlainText) $
           getSummary $
             CM.commonmarkToNode [] art.body
       !body =
         LT.toStrict
           $ H.renderText
           $ toStandaloneHtml
-            PageOptions
-              { siteName = "ごはんぶらー"
-              , title
-              }
+            (pageOptionTitle env title)
           $ articlePage opts art
   Resp.newResponse
     Resp.SimpleResponseInit
@@ -285,7 +289,7 @@ serveTagPage env _ctx uri tag = do
         LT.toStrict
           $ H.renderText
           $ toStandaloneHtml
-            PageOptions {siteName = "ごはんぶらー", title = "Articles for #" <> tag}
+            (pageOptionTitle env $ "Articles for #" <> tag)
           $ articleTable (toRenderingOpts $ getEnv "BASE_URL" env) arts
   Resp.newResponse
     Resp.SimpleResponseInit
