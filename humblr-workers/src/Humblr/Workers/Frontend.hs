@@ -46,7 +46,7 @@ import GHC.Wasm.Object.Builtins
 import GHC.Wasm.Prim
 import GHC.Wasm.Web.Generated.Headers qualified as Headers
 import GHC.Word
-import Humblr.Html (RenderingOptions (..), articlePage, articleTable, toStandaloneHtml)
+import Humblr.Html (PageOptions (..), RenderingOptions (..), articlePage, articleTable, toStandaloneHtml)
 import Humblr.Types (Article (..))
 import Lucid qualified as H
 import Network.Cloudflare.Worker.Binding
@@ -200,7 +200,7 @@ serveArticle _req env _ctx slug = do
   let body =
         LT.toStrict $
           H.renderText $
-            toStandaloneHtml "Article" $
+            toStandaloneHtml PageOptions {siteName = "ごはんぶらー", title = "記事"} $
               articlePage opts art
   Resp.newResponse
     Resp.SimpleResponseInit
@@ -243,10 +243,11 @@ serveTagPage env _ctx uri tag = do
   qs <- getPresetQueries d1
   arts <- getArticlesWithTag qs tag mpage
   let body =
-        LT.toStrict $
-          H.renderText $
-            toStandaloneHtml ("Articles for #" <> tag) $
-              articleTable (toRenderingOpts $ getEnv "BASE_URL" env) arts
+        LT.toStrict
+          $ H.renderText
+          $ toStandaloneHtml
+            PageOptions {siteName = "ごはんぶらー", title = "Articles for #" <> tag}
+          $ articleTable (toRenderingOpts $ getEnv "BASE_URL" env) arts
   Resp.newResponse
     Resp.SimpleResponseInit
       { status = 200
