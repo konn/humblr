@@ -39,6 +39,7 @@ import Lucid
 data PageOptions = PageOptions
   { title :: !T.Text
   , siteName :: !T.Text
+  , topPage :: !T.Text
   }
   deriving (Show, Eq, Ord, Generic)
 
@@ -46,6 +47,7 @@ toStandaloneHtml :: PageOptions -> Html () -> Html ()
 toStandaloneHtml opts body = doctypehtml_ do
   head_ do
     meta_ [charset_ "utf-8"]
+    meta_ [name_ "viewport", content_ "width=device-width, initial-scale=1"]
     title_ $ toHtml opts.title
     link_ [rel_ "stylesheet", href_ "https://cdn.jsdelivr.net/npm/bulma@1.0.1/css/bulma.min.css"]
   body_ do
@@ -53,25 +55,26 @@ toStandaloneHtml opts body = doctypehtml_ do
       section_ [class_ "hero is-light"] $
         div_ [class_ "hero-body"] $
           div_ [class_ "container has-text-centered"] do
-            h1_ [class_ "title"] $ toHtml opts.siteName
+            h1_ [class_ "title"] $ a_ [href_ opts.topPage] $ toHtml opts.siteName
 
     div_ [class_ "main-content"] body
 
 articlePage :: RenderingOptions -> Article -> Html ()
 articlePage opts Article {..} = do
-  div_ [class_ "container block"] $
+  div_ [class_ "container"] $
     div_ [class_ "columns is-multiline is-centered"] $
       div_ [class_ "column is-8"] $ div_ [class_ "box"] do
-        div_ [class_ "content-wrapper"] $
-          toHtmlRaw $
-            CM.nodeToHtml [] $
-              transform (rewriteImageLinks opts) $
-                CM.commonmarkToNode [] body
-        div_ [class_ "end-post-details"] do
-          div_ [class_ "is-pulled-left"] $ do
-            i_ $ toHtml $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" $ utcToZonedTime opts.timeZone updatedAt
-          div_ [class_ "is-pulled-right"] $ forM_ tags \tag -> do
-            a_ [href_ $ opts.tagBase <> "/" <> tag] $ "#" <> toHtml tag
+        div_ [class_ "content is-large"] $ div_ [class_ "block"] do
+          div_ [class_ "block"] $
+            toHtmlRaw $
+              CM.nodeToHtml [] $
+                transform (rewriteImageLinks opts) $
+                  CM.commonmarkToNode [] body
+          div_ [class_ "level"] do
+            div_ [class_ "level-left"] $ do
+              p_ $ toHtml $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" $ utcToZonedTime opts.timeZone updatedAt
+            div_ [class_ "level-right"] $ forM_ tags \tag -> do
+              p_ $ a_ [class_ "tag", href_ $ opts.tagBase <> "/" <> tag] $ "#" <> toHtml tag
 
 rewriteImageLinks :: RenderingOptions -> CM.Node -> CM.Node
 rewriteImageLinks opts (CM.Node pos (CM.IMAGE url alt) ns) =
