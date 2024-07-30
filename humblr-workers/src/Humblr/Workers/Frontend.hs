@@ -15,6 +15,7 @@
 
 module Humblr.Workers.Frontend (frontendHandlers, JSObject (..), JSHandlers) where
 
+import CMark qualified as CM
 import Control.Concurrent.Async (Async, async, wait)
 import Control.Exception (someExceptionContext)
 import Control.Exception.Context (displayExceptionContext)
@@ -46,7 +47,7 @@ import GHC.Wasm.Object.Builtins
 import GHC.Wasm.Prim
 import GHC.Wasm.Web.Generated.Headers qualified as Headers
 import GHC.Word
-import Humblr.Html (PageOptions (..), RenderingOptions (..), articlePage, articleTable, toStandaloneHtml)
+import Humblr.Html (PageOptions (..), RenderingOptions (..), articlePage, articleTable, getSummary, nodeToPlainText, toStandaloneHtml)
 import Humblr.Types (Article (..))
 import Lucid qualified as H
 import Network.Cloudflare.Worker.Binding
@@ -98,6 +99,17 @@ frontend req env ctx = handleAny reportError do
       rawPathInfo = BS8.pack uri.uriPath
       pathInfo = decodePathSegments rawPathInfo
   case pathInfo of
+    [] ->
+      serveCached
+        CacheOptions
+          { cacheTTL = 1200 * 24
+          , onlyOk = True
+          , includeQuery = True
+          }
+        req
+        ctx
+        uri
+        $ serveTopPage env ctx
     ["tag", t] ->
       serveCached
         CacheOptions
@@ -185,6 +197,25 @@ serveCached opts req ctx uri act = do
         waitUntil ctx =<< Cache.put keyReq resp
       pure resp
 
+serveTopPage :: JSObject FrontendEnv -> FetchContext -> IO Resp.WorkerResponse
+serveTopPage env _ctx = do
+  let d1 = getBinding "D1" env
+  qs <- getPresetQueries d1
+  arts <- getRecentArticles qs Nothing
+  let body =
+        LT.toStrict
+          $ H.renderText
+          $ toStandaloneHtml
+            PageOptions {siteName = "ごはんぶらー", title = "ごはんぶらー"}
+          $ articleTable (toRenderingOpts $ getEnv "BASE_URL" env) arts
+  Resp.newResponse
+    Resp.SimpleResponseInit
+      { status = 200
+      , statusText = "OK"
+      , body = body
+      , headers = Map.fromList [("Content-Type", "text/html")]
+      }
+
 serveArticle ::
   (HasCallStack) =>
   Req.WorkerRequest ->
@@ -197,11 +228,19 @@ serveArticle _req env _ctx slug = do
       opts = toRenderingOpts $ getEnv "BASE_URL" env
   qs <- getPresetQueries d1
   art <- maybe (throwCode 404 $ "Article Not Found: " <> slug) pure =<< lookupSlug qs slug
-  let body =
-        LT.toStrict $
-          H.renderText $
-            toStandaloneHtml PageOptions {siteName = "ごはんぶらー", title = "記事"} $
-              articlePage opts art
+  let !title =
+        maybe "記事" (T.take 20 . T.strip . nodeToPlainText) $
+          getSummary $
+            CM.commonmarkToNode [] art.body
+      !body =
+        LT.toStrict
+          $ H.renderText
+          $ toStandaloneHtml
+            PageOptions
+              { siteName = "ごはんぶらー"
+              , title
+              }
+          $ articlePage opts art
   Resp.newResponse
     Resp.SimpleResponseInit
       { status = 200
@@ -257,7 +296,7 @@ serveTagPage env _ctx uri tag = do
       }
 
 serveStatic :: Req.WorkerRequest -> JSObject FrontendEnv -> FetchContext -> BS8.ByteString -> [T.Text] -> IO Resp.WorkerResponse
-serveStatic req env ctx rawPathInfo pathInfo = do
+serveStatic _req env _ctx rawPathInfo pathInfo = do
   let objPath = BS8.dropWhile (== '/') rawPathInfo
       r2 = getBinding "R2" env
   objBody <-
@@ -361,6 +400,7 @@ data PresetQueries = PresetQueries
   , tagArticle :: !(Preparation '[ArticleId, TagId])
   , articleWithTags :: !(Preparation '[T.Text, Word32])
   , lookupFromSlug :: !(Preparation '[T.Text])
+  , recentArticles :: !(Preparation '[Word32])
   }
 
 getPresetQueries :: D1 -> IO PresetQueries
@@ -372,7 +412,28 @@ getPresetQueries d1 = do
   tagArticle <- mkTagArticleQ d1
   articleWithTags <- mkArticleWithTagsQ d1
   lookupFromSlug <- mkLookupSlugQ d1
+  recentArticles <- mkRecentArticlesQ d1
   pure PresetQueries {..}
+
+getRecentArticles :: PresetQueries -> Maybe Word32 -> IO [Article]
+getRecentArticles qs page = do
+  rows <-
+    wait
+      =<< D1.all
+      =<< bind qs.recentArticles (maybe 0 (* 10) page)
+  unless rows.success $
+    throwString "Failed to fetch recent articles"
+  let (fails, articles) = partitionEithers $ map D1.parseD1RowView $ V.toList rows.results
+  unless (null fails) $
+    throwString $
+      "Failed to parse article row: " <> show fails
+  mapM (fromArticleRow qs) articles
+
+mkRecentArticlesQ :: D1 -> IO (Preparation '[Word32])
+mkRecentArticlesQ d1 =
+  D1.prepare d1 "SELECT * FROM articles ORDER BY createdAt DESC LIMIT 10 OFFSET ?" <&> \prep ->
+    Preparation \page ->
+      D1.bind prep (V.singleton $ D1.toD1ValueView $ page * 10)
 
 mkLookupSlugQ :: D1 -> IO (Preparation '[T.Text])
 mkLookupSlugQ d1 =
@@ -480,29 +541,6 @@ fromArticleRow qs arow = do
       , createdAt = arow.createdAt
       , tags
       }
-
-makeSureTagExists :: (HasCallStack) => PresetQueries -> D1 -> T.Text -> IO TagRow
-makeSureTagExists qs d1 tag = do
-  rows <-
-    wait
-      =<< D1.batch d1 . V.fromList
-      =<< sequenceA
-        [ bind qs.tryInsertTag tag
-        , bind qs.lookupTagName tag
-        ]
-  let resl = V.last rows
-  unless resl.success $
-    throwString "Failed to lookup tag"
-  when (V.null resl.results) $
-    throwString "No corresponding tag found!"
-  case D1.parseD1RowView $ V.head resl.results of
-    Right t -> pure t
-    Left err ->
-      throwString $
-        "Failed to parse tag row: "
-          <> show (V.head resl.results)
-          <> "\nReason: "
-          <> err
 
 consoleLog :: String -> IO ()
 consoleLog = js_console_log . toJSString

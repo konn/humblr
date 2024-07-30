@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -17,12 +18,15 @@ module Humblr.Html (
   articleTable,
   RenderingOptions (..),
   articleCard,
+  getSummary,
+  nodeToPlainText,
 ) where
 
 import CMark (commonmarkToNode)
 import qualified CMark as CM
 import Control.Lens
 import Control.Monad (forM_)
+import Data.Foldable (fold)
 import Data.Generics.Labels ()
 import qualified Data.Text as T
 import Data.Time (TimeZone, defaultTimeLocale, utcToZonedTime)
@@ -55,7 +59,7 @@ toStandaloneHtml opts body = doctypehtml_ do
 
 articlePage :: RenderingOptions -> Article -> Html ()
 articlePage opts Article {..} = do
-  div_ [class_ "container"] $
+  div_ [class_ "container block"] $
     div_ [class_ "columns is-multiline is-centered"] $
       div_ [class_ "column is-8"] $ div_ [class_ "box"] do
         div_ [class_ "content-wrapper"] $
@@ -93,7 +97,7 @@ articleCard :: RenderingOptions -> Article -> Html ()
 articleCard opts Article {..} = div_ [class_ "box"] $ div_ [class_ "card"] do
   let nodes = commonmarkToNode [] body
       imgs =
-        nodes ^? cosmos . #_Node . _2 . #_IMAGE
+        nodes ^? deep (#_Node . _2 . #_IMAGE)
       articleLink = T.dropWhileEnd (== '/') opts.articleBase <> "/" <> slug
       summary = getSummary nodes
   forM_ imgs $ \(i, alt) -> do
@@ -120,7 +124,7 @@ instance Plated CM.Node where
   plate = #_Node . _3 . each
 
 getSummary :: CM.Node -> Maybe CM.Node
-getSummary nodes = trimImages nodes ^? cosmos . filtered (\(CM.Node _ ty _) -> ty == CM.PARAGRAPH)
+getSummary nodes = trimImages nodes ^? deep (filtered (\(CM.Node _ ty _) -> ty == CM.PARAGRAPH))
 
 trimImages :: CM.Node -> CM.Node
 trimImages = transform \(CM.Node p ty chs) ->
@@ -133,3 +137,26 @@ isEmptyPara _ = False
 isImage :: CM.Node -> Bool
 isImage (CM.Node _ CM.IMAGE {} _) = True
 isImage (CM.Node _ _ _) = False
+
+nodeToPlainText :: CM.Node -> T.Text
+nodeToPlainText = para \cases
+  (CM.Node _ CM.DOCUMENT _) ps -> foldMap (<> "\n\n") ps
+  (CM.Node _ (CM.TEXT t) _) _ -> t
+  (CM.Node _ CM.SOFTBREAK _) _ -> " "
+  (CM.Node _ CM.LINEBREAK _) _ -> "\n"
+  (CM.Node _ CM.THEMATIC_BREAK _) _ -> "\n"
+  (CM.Node _ CM.PARAGRAPH _) ps -> foldMap (<> "\n\n") ps <> "\n"
+  (CM.Node _ CM.BLOCK_QUOTE _) ps -> fold ps
+  (CM.Node _ CM.HTML_BLOCK {} _) _ -> mempty
+  (CM.Node _ CM.HTML_INLINE {} _) _ -> mempty
+  (CM.Node _ CM.CUSTOM_BLOCK {} _) _ -> mempty
+  (CM.Node _ CM.CUSTOM_INLINE {} _) _ -> mempty
+  (CM.Node _ (CM.CODE_BLOCK _ code) _) _ -> code <> "\n\n"
+  (CM.Node _ (CM.CODE code) _) _ -> code
+  (CM.Node _ (CM.HEADING n) _) ps -> fold (replicate n "#") <> fold ps <> "\n\n"
+  (CM.Node _ (CM.LIST _) _) ps -> foldMap ((<> "\n") . ("- " <>)) ps
+  (CM.Node _ CM.ITEM _) ps -> foldMap ((<> "\n")) ps
+  (CM.Node _ CM.EMPH _) ps -> fold ps
+  (CM.Node _ CM.STRONG _) ps -> fold ps
+  (CM.Node _ CM.LINK {} _) ps -> fold ps
+  (CM.Node _ (CM.IMAGE _ alt) _) _ -> alt
