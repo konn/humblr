@@ -42,10 +42,22 @@ common defaults
 
 library
   import: defaults
-  hs-source-dirs: src
+  build-depends:
+    aeson,
+    bytestring,
+    cmark,
+    containers,
+    generic-lens,
+    humblr-core,
+    lens,
+    lucid2,
+    text,
+    time,
+    unordered-containers,
+
   hs-source-dirs: src
   -- cabal-gild: discover src --exclude=src/**/Internal.hs --exclude=src/**/Internal/**/*.hs
-  exposed-modules: Lib
+  exposed-modules: Humblr.Html
   -- cabal-gild: discover src --include=src/**/Internal.hs --include=src/**/Internal/**/*.hs
   other-modules:
 

@@ -12,8 +12,7 @@ import Data.Time (UTCTime)
 import GHC.Generics (Generic)
 
 data Article = Article
-  { title :: !T.Text
-  , body :: !T.Text
+  { body :: !T.Text
   , slug :: !T.Text
   , updatedAt :: !UTCTime
   , createdAt :: !UTCTime
@@ -23,7 +22,7 @@ data Article = Article
   deriving anyclass (FromJSON, ToJSON)
 
 data ArticleSummary = ArticleSummary
-  { title :: !T.Text
+  { body :: !T.Text
   , slug :: !T.Text
   , updatedAt :: !UTCTime
   , createdAt :: !UTCTime

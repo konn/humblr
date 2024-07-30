@@ -59,6 +59,7 @@ library
     ghc-wasm-jsobjects,
     http-types,
     humblr-core,
+    humblr-frontend,
     lens,
     lucid2,
     mime-types,

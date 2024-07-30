@@ -1,6 +1,5 @@
 CREATE TABLE IF NOT EXISTS articles (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  title TEXT NOT NULL,
   body TEXT,
   createdAt TEXT NOT NULL,
   lastUpdate TEXT NOT NULL,
