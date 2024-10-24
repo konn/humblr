@@ -1,47 +1,86 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MonoLocalBinds #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE StandaloneKindSignatures #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE NoFieldSelectors #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Humblr.Html (
-  toStandaloneHtml,
-  PageOptions (..),
-  articlePage,
-  articleTable,
-  RenderingOptions (..),
-  articleCard,
-  getSummary,
-  nodeToPlainText,
-) where
+module Humblr.Frontend.View (viewModel) where
 
-import CMark (commonmarkToNode)
-import qualified CMark as CM
-import Control.Lens
-import Control.Monad (forM_)
-import Data.Foldable (fold)
+import Control.Exception.Safe (Exception (..), tryAny)
 import Data.Generics.Labels ()
+import Data.Maybe (fromMaybe)
+import Data.Proxy (Proxy (..))
 import qualified Data.Text as T
-import Data.Time (TimeZone, defaultTimeLocale, utcToZonedTime)
-import Data.Time.Format (formatTime)
-import Data.Time.Format.ISO8601 (iso8601Show)
-import GHC.Generics (Generic)
-import Humblr.Types
-import Lucid
+import Humblr.Frontend.Actions
+import Humblr.Frontend.Types
+import Miso
+import Miso.String (ToMisoString (toMisoString))
+import Network.HTTP.Types (status404)
+import Servant.API
+import Servant.Auth.Client ()
+import Servant.Client.FetchAPI
 
-data PageOptions = PageOptions
-  { title :: !T.Text
-  , siteName :: !T.Text
-  , topPage :: !T.Text
-  }
-  deriving (Show, Eq, Ord, Generic)
+viewModel :: Model -> View Action
+viewModel m@Model {..} =
+  section_
+    [class_ "section"]
+    [ headerView m
+    , footerView
+    ]
+
+headerView :: Model -> View Action
+headerView _ =
+  div_
+    [class_ "header-content"]
+    [ section_
+        [class_ "hero is-light"]
+        [ div_
+            [class_ "hero-body"]
+            [ div_
+                [class_ "container has-text-centered"]
+                [ h1_ [class_ "title"] [a_ [onClick $ gotoTop Nothing] ["ごはんぶらー"]]
+                ]
+            ]
+        ]
+    ]
+
+footerView :: View Action
+footerView =
+  footer_
+    [class_ "footer"]
+    [ div_
+        [class_ "content has-text-centered"]
+        [ p_
+            []
+            [ "Powered by "
+            , a_ [href_ "https://haskell.org"] ["Haskell"]
+            , ", "
+            , a_ [href_ "https://haskell-miso.org"] ["Miso"]
+            , ", "
+            , a_ [href_ "https://www.cloudflare.com/developer-platform/workers/"] ["Cloudflare Workers"]
+            , ", and"
+            , a_ [href_ "https://bulma.io"] ["Bulma"]
+            , "."
+            ]
+        , p_ [] ["(c) 2024-present Hiromi ISHII"]
+        ]
+    ]
+
+{-
 
 toStandaloneHtml :: PageOptions -> Html () -> Html ()
 toStandaloneHtml opts body = doctypehtml_ do
@@ -121,45 +160,4 @@ articleCard opts Article {..} = div_ [class_ "box"] $ div_ [class_ "card"] do
         $ toHtml
         $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S"
         $ utcToZonedTime opts.timeZone createdAt
-
-instance Plated CM.Node where
-  plate :: Traversal' CM.Node CM.Node
-  plate = #_Node . _3 . each
-
-getSummary :: CM.Node -> Maybe CM.Node
-getSummary nodes = trimImages nodes ^? deep (filtered (\(CM.Node _ ty _) -> ty == CM.PARAGRAPH))
-
-trimImages :: CM.Node -> CM.Node
-trimImages = transform \(CM.Node p ty chs) ->
-  CM.Node p ty $ filter (not . isEmptyPara) $ filter (not . isImage) chs
-
-isEmptyPara :: CM.Node -> Bool
-isEmptyPara (CM.Node _ CM.PARAGRAPH []) = True
-isEmptyPara _ = False
-
-isImage :: CM.Node -> Bool
-isImage (CM.Node _ CM.IMAGE {} _) = True
-isImage (CM.Node _ _ _) = False
-
-nodeToPlainText :: CM.Node -> T.Text
-nodeToPlainText = para \cases
-  (CM.Node _ CM.DOCUMENT _) ps -> foldMap (<> "\n\n") ps
-  (CM.Node _ (CM.TEXT t) _) _ -> t
-  (CM.Node _ CM.SOFTBREAK _) _ -> " "
-  (CM.Node _ CM.LINEBREAK _) _ -> "\n"
-  (CM.Node _ CM.THEMATIC_BREAK _) _ -> "\n"
-  (CM.Node _ CM.PARAGRAPH _) ps -> foldMap (<> "\n\n") ps <> "\n"
-  (CM.Node _ CM.BLOCK_QUOTE _) ps -> fold ps
-  (CM.Node _ CM.HTML_BLOCK {} _) _ -> mempty
-  (CM.Node _ CM.HTML_INLINE {} _) _ -> mempty
-  (CM.Node _ CM.CUSTOM_BLOCK {} _) _ -> mempty
-  (CM.Node _ CM.CUSTOM_INLINE {} _) _ -> mempty
-  (CM.Node _ (CM.CODE_BLOCK _ code) _) _ -> code <> "\n\n"
-  (CM.Node _ (CM.CODE code) _) _ -> code
-  (CM.Node _ (CM.HEADING n) _) ps -> fold (replicate n "#") <> fold ps <> "\n\n"
-  (CM.Node _ (CM.LIST _) _) ps -> foldMap ((<> "\n") . ("- " <>)) ps
-  (CM.Node _ CM.ITEM _) ps -> foldMap ((<> "\n")) ps
-  (CM.Node _ CM.EMPH _) ps -> fold ps
-  (CM.Node _ CM.STRONG _) ps -> fold ps
-  (CM.Node _ CM.LINK {} _) ps -> fold ps
-  (CM.Node _ (CM.IMAGE _ alt) _) _ -> alt
+ -}

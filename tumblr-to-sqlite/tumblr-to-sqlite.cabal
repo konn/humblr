@@ -1,7 +1,7 @@
 cabal-version: 3.4
-name: humblr-core
+name: tumblr-to-sqlite
 version: 0.1.0.0
-description: Please see the README on GitHub at <https://github.com/konn/humblr/humblr-core#readme>
+description: Please see the README on GitHub at <https://github.com/konn/humblr/tumblr-to-sqlite#readme>
 homepage: https://github.com/konn/humblr#readme
 bug-reports: https://github.com/konn/humblr/issues
 author: Hiromi ISHII
@@ -11,7 +11,7 @@ license: BSD-3-Clause
 license-file: LICENSE
 build-type: Simple
 tested-with:
-  ghc ==9.8.4
+  ghc ==9.10.1
 
 extra-doc-files:
   CHANGELOG.md
@@ -20,11 +20,11 @@ extra-doc-files:
 source-repository head
   type: git
   location: https://github.com/konn/humblr
-  subdir: humblr-core
+  subdir: tumblr-to-sqlite
 
 common defaults
-  autogen-modules: Paths_humblr_core
-  other-modules: Paths_humblr_core
+  autogen-modules: Paths_tumblr_to_sqlite
+  other-modules: Paths_tumblr_to_sqlite
   ghc-options:
     -Wall
     -Wcompat
@@ -44,16 +44,53 @@ library
   import: defaults
   build-depends:
     aeson,
+    attoparsec-aeson,
     bytestring,
     containers,
-    http-media,
-    servant,
-    servant-auth-lite,
+    direct-sqlite,
+    lens,
+    nonce,
+    stm,
+    stm-containers,
+    streaming-attoparsec,
+    streaming-bytestring,
+    streaming-http,
     text,
-    time,
+    unordered-containers,
+    wai,
+    warp,
+    wreq,
 
   hs-source-dirs: src
   -- cabal-gild: discover src --exclude=src/**/Internal.hs --exclude=src/**/Internal/**/*.hs
-  exposed-modules: Humblr.Types
+  exposed-modules: Humblr.Migration.Tumblr.Sqlite
   -- cabal-gild: discover src --include=src/**/Internal.hs --include=src/**/Internal/**/*.hs
   other-modules:
+
+executable tumblr-to-sqlite
+  import: defaults
+  hs-source-dirs: app
+  main-is: Main.hs
+  -- cabal-gild: discover app --exclude=app/Main.hs
+  other-modules:
+  ghc-options:
+    -threaded
+    -rtsopts
+    -with-rtsopts=-N
+
+  build-depends: tumblr-to-sqlite
+
+test-suite tumblr-to-sqlite-test
+  import: defaults
+  type: exitcode-stdio-1.0
+  main-is: Test.hs
+  hs-source-dirs: test
+  -- cabal-gild: discover test --exclude=test/Test.hs
+  other-modules:
+  ghc-options:
+    -threaded
+    -O2
+    -rtsopts
+    -with-rtsopts=-N
+
+  build-depends: tumblr-to-sqlite

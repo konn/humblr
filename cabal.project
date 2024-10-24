@@ -1,5 +1,4 @@
-with-compiler: ghc-9.10.1
-packages: */*.cabal
 import: cabal-common.project
-tests: True
-benchmarks: True
+multi-repl: True
+semaphore: True
+packages: */*.cabal

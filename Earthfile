@@ -1,39 +1,43 @@
 VERSION 0.8
-ARG --global GHC_VER=9.10.0.20240412
-FROM --platform=linux/amd64 ghcr.io/konn/humblr/build:${GHC_VER}
+ARG --global GHC_VER=9.10.1
+ARG --global GLOBAL_CACHE_IMAGE=ghcr.io/konn/humblr/build-cache
+FROM --platform=linux/amd64 ghcr.io/konn/ghc-wasm-earthly:${GHC_VER}
 WORKDIR /workdir
 
 ENV GHC=wasm32-wasi-ghc
-ENV CABAL=wasm32-wasi-cabal --project-file=cabal-wasm.project --with-ghc=wasm32-wasi-ghc --with-ghc-pkg=wasm32-wasi-ghc-pkg --with-hsc2hs=wasm32-wasi-hsc2hs
+ENV CABAL=wasm32-wasi-cabal --project-file=cabal-wasm.project \
+--with-compiler=wasm32-wasi-ghc-${GHC_VER} \
+--with-ghc=wasm32-wasi-ghc-${GHC_VER} \
+--with-ghc-pkg=wasm32-wasi-ghc-pkg-${GHC_VER} \
+--with-hc-pkg=wasm32-wasi-ghc-pkg-${GHC_VER} \
+--with-hsc2hs=wasm32-wasi-hsc2hs-${GHC_VER}
 
-base-image:
-  FROM --platform=linux/amd64 ghcr.io/konn/ghc-wasm-earthly:${GHC_VER}
-  RUN wasm32-wasi-cabal --with-ghc=wasm32-wasi-ghc --with-ghc-pkg=wasm32-wasi-ghc-pkg --with-hsc2hs=wasm32-wasi-hsc2hs update --index-state=2024-07-23T12:15:54Z
-  SAVE IMAGE --push ghcr.io/konn/humblr/build:${GHC_VER}
+build-all:
+  COPY --keep-ts ./*.project ./
+  COPY --keep-ts ./*.freeze ./
+  COPY --keep-ts ./build-scripts ./build-scripts
+  COPY --keep-ts ./humblr-core ./humblr-core
+  COPY --keep-ts ./humblr-frontend ./humblr-frontend
+  COPY --keep-ts ./humblr-workers ./humblr-workers
+  CACHE --sharing shared --chmod 0777 --id=all#ghc-${GHC_VER}#global-store --persist /root/.ghc-wasm/.cabal/store
+  CACHE --sharing=shared --chmod=0777 --id=all#ghc${GHC_VER}#dist-newstyle --persist dist-newstyle
+  RUN ${CABAL} update --index-state=2024-10-17T07:25:36Z
+  RUN ${CABAL} build --only-dependencies all
+  RUN ${CABAL} build all
 
 build:
+  FROM +build-all
+  BUILD  --platform=linux/amd64 +build-all
   ARG target
   ARG outdir=$(echo ${target} | cut -d: -f3)
   ARG wasm=${outdir}.wasm
-  ENV MOUNT_GLOBAL_STORE="type=cache,mode=0777,id=${target}#ghc-${GHC_VER}#global-store,sharing=shared,target=/root/.ghc-wasm/.cabal/store"
-  ENV MOUNT_DIST_NEWSTYLE="type=cache,mode=0777,id=${target}#ghc${GHC_VER}#dist-newstyle,sharing=shared,target=dist-newstyle"
-  COPY --keep-ts . .
-  RUN --mount ${MOUNT_GLOBAL_STORE} \
-      --mount ${MOUNT_DIST_NEWSTYLE} \
-      ${CABAL} update --index-state=2024-06-28T07:25:12Z
-  RUN --mount ${MOUNT_GLOBAL_STORE} \
-      --mount ${MOUNT_DIST_NEWSTYLE} \
-      ${CABAL} build --only-dependencies ${target}
-  RUN --mount ${MOUNT_GLOBAL_STORE} \
-      --mount ${MOUNT_DIST_NEWSTYLE} \
-      ${CABAL} build  ${target}
   # From frontend/build.sh in tweag/ghc-wasm-miso-examples
   LET HS_WASM_PATH=$(${CABAL} list-bin -v0 ${target})
   LET WASM_LIB=$(wasm32-wasi-ghc --print-libdir)
   LET DEST=dist/${wasm}
   RUN mkdir -p dist
-  RUN --mount ${MOUNT_DIST_NEWSTYLE} cp ${HS_WASM_PATH} ./dist/${wasm}
-  RUN --mount ${MOUNT_DIST_NEWSTYLE} ${WASM_LIB}/post-link.mjs --input ${HS_WASM_PATH} --output ./dist/ghc_wasm_jsffi.js
+  RUN cp ${HS_WASM_PATH} ./dist/${wasm}
+  RUN ${WASM_LIB}/post-link.mjs --input ${HS_WASM_PATH} --output ./dist/ghc_wasm_jsffi.js
   SAVE ARTIFACT dist
 
 optimised-wasm:
@@ -41,6 +45,7 @@ optimised-wasm:
   ARG outdir=$(echo ${target} | cut -d: -f3)
   ARG wasm=${outdir}.wasm
   RUN mkdir -p dist/
+  BUILD --platform=linux/amd64 +build --target=${target} --outdir=${outdir} --wasm=${wasm}.orig
   COPY (+build/dist/${wasm}.orig --target=${target} --outdir=${outdir} --wasm=${wasm}.orig) ./dist/
   RUN wizer --allow-wasi --wasm-bulk-memory true --init-func _initialize -o dist/${wasm} dist/${wasm}.orig
   RUN wasm-opt -Oz dist/${wasm} -o dist/${wasm}
@@ -53,14 +58,42 @@ patch-jsffi-for-cf:
   ARG target
   ARG outdir=$(echo ${target} | cut -d: -f3)
   ARG wasm=${outdir}.wasm
+  BUILD --platform=linux/amd64 +optimised-wasm --target=${target} --outdir=${outdir} --wasm=${wasm}
   COPY  (+optimised-wasm/dist --target=${target} --outdir=${outdir} --wasm=${wasm}) ./dist
   LET PATCHER=./js-ffi-patcher.mjs
-  COPY ./humblr-workers/data/jsffi-patcher.mjs ${PATCHER}
+  COPY ./build-scripts/jsffi-patcher.mjs ${PATCHER}
   RUN node ${PATCHER} ./dist/ghc_wasm_jsffi.js
   SAVE ARTIFACT ./dist
 
 frontend:
+  BUILD --platform=linux/amd64 +optimised-wasm --target=humblr-frontend:exe:humblr-frontend
+  COPY (+optimised-wasm/dist --target=humblr-frontend:exe:humblr-frontend) ./dist
+  LET ORIG_WASM=humblr-frontend.wasm
+  LET SHASUM_WASM=$(sha1sum dist/${ORIG_WASM} | cut -c1-7)
+  LET FINAL_WASM=humblr-frontend-${SHASUM_WASM}.wasm
+  RUN mv dist/${ORIG_WASM} dist/${FINAL_WASM}
+
+  LET GHC_JSFFI_ORIG=ghc_wasm_jsffi.js
+  LET SHASUM_JSFFI=$(sha1sum dist/${GHC_JSFFI_ORIG} | cut -c1-7)
+  LET GHC_JSFFI_FINAL=ghc_wasm_jsffi-${SHASUM_JSFFI}.js
+  RUN mv dist/${GHC_JSFFI_ORIG} dist/${GHC_JSFFI_FINAL}
+
+  COPY humblr-frontend/data/index.js dist/index.js
+  RUN sed -i "s/${ORIG_WASM}/${FINAL_WASM}/g" dist/index.js
+  RUN sed -i "s/${GHC_JSFFI_ORIG}/${GHC_JSFFI_FINAL}/g" dist/index.js
+  LET INDEX_JS_SHASUM=$(sha1sum dist/index.js | cut -c1-7)
+  LET INDEX_JS_FINAL=index-${INDEX_JS_SHASUM}.js
+  RUN mv dist/index.js dist/${INDEX_JS_FINAL}
+  COPY humblr-frontend/data/index.html dist/index.html
+  RUN sed -i "s/index.js/${INDEX_JS_FINAL}/g" dist/index.html
+  SAVE ARTIFACT ./dist
+
+worker:
   COPY humblr-workers/data/worker-template/ ./dist/
-  COPY (+patch-jsffi-for-cf/dist --target=humblr-workers:exe:humblr-frontend --wasm=handlers.wasm) ./dist/src
+  BUILD --platform=linux/amd64  +patch-jsffi-for-cf --target=humblr-workers:exe:humblr-workers --wasm=worker.wasm
+  COPY (+patch-jsffi-for-cf/dist --target=humblr-workers:exe:humblr-workers --wasm=worker.wasm) ./dist/src
   RUN cd ./dist && npm i
-  SAVE ARTIFACT ./dist AS LOCAL _build/frontend
+  BUILD  --platform=linux/amd64 +frontend
+  COPY +frontend/dist/* ./dist/assets/admin/
+  SAVE ARTIFACT ./dist AS LOCAL _build/worker
+  SAVE IMAGE --push "${GLOBAL_CACHE_IMAGE}:cache"
