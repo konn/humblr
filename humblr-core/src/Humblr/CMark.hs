@@ -5,7 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Humblr.Frontend.CMark (
+module Humblr.CMark (
   module CMark,
   getSummary,
   trimImages,

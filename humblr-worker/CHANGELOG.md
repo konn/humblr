@@ -1,4 +1,4 @@
-# Changelog for `humblr-workers`
+# Changelog for `humblr-worker`
 
 All notable changes to this project will be documented in this file.
 

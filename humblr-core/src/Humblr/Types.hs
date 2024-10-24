@@ -2,8 +2,10 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
 module Humblr.Types (
@@ -21,16 +23,21 @@ module Humblr.Types (
   HTML,
 ) where
 
+import Control.Lens
 import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson qualified as J
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as LBS
+import Data.Generics.Labels ()
 import Data.List.NonEmpty qualified as NE
+import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Time (UTCTime)
 import GHC.Generics (Generic)
 import Network.HTTP.Media qualified as M
 import Servant.API
 import Servant.Auth
+import Servant.Auth.JWT
 import Servant.Links
 
 type RequireUser = Auth '[CloudflareZeroTrust, JWT] User
@@ -66,12 +73,32 @@ data RootAPI mode = RootAPI
   { apiRoutes :: mode :- "api" :> NamedRoutes AdminAPI
   , frontend :: mode :- NamedRoutes FrontendRoutes
   , assets :: mode :- "assets" :> Raw
+  , resources :: mode :- "resources" :> Raw
   }
   deriving (Generic)
 
 data User = User {email :: T.Text}
   deriving (Show, Eq, Ord, Generic)
   deriving anyclass (FromJSON, ToJSON)
+
+instance ToJWT User where
+  encodeJWT User {..} =
+    mempty @ClaimsSet
+      & #unregisteredClaims .~ Map.singleton "email" (J.toJSON email)
+  {-# INLINE encodeJWT #-}
+
+instance FromJWT User where
+  decodeJWT claims =
+    fmap User . eitherResult . J.fromJSON
+      =<< maybe
+        (Left $ "Missing 'email' claim")
+        Right
+        (Map.lookup "email" claims.unregisteredClaims)
+  {-# INLINE decodeJWT #-}
+
+eitherResult :: J.Result a -> Either T.Text a
+eitherResult (J.Success a) = Right a
+eitherResult (J.Error e) = Left $ T.pack e
 
 data AdminAPI mode = AdminAPI
   { listArticles ::
@@ -92,11 +119,11 @@ data AdminAPI mode = AdminAPI
   deriving (Generic)
 
 data FrontendRoutes mode = FrontendRoutes
-  { topPage :: mode :- QueryParam "page" Word :> Get '[HTML] LBS.ByteString
-  , articlePage :: mode :- "articles" :> Capture "slug" T.Text :> Get '[HTML] LBS.ByteString
-  , editArticle :: mode :- "admin" :> "edit" :> Capture "slug" T.Text :> Get '[HTML] LBS.ByteString
-  , newArticle :: mode :- "admin" :> "new" :> Get '[HTML] LBS.ByteString
-  , tagArticles :: mode :- "tags" :> Capture "tag" T.Text :> QueryParam "page" Word :> Get '[HTML] LBS.ByteString
+  { topPage :: mode :- QueryParam "page" Word :> Raw
+  , articlePage :: mode :- "articles" :> Capture "slug" T.Text :> Raw
+  , editArticle :: mode :- "admin" :> "edit" :> Capture "slug" T.Text :> Raw
+  , newArticle :: mode :- "admin" :> "new" :> Raw
+  , tagArticles :: mode :- "tags" :> Capture "tag" T.Text :> QueryParam "page" Word :> Raw
   }
   deriving (Generic)
 

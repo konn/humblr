@@ -76,7 +76,6 @@ library
   exposed-modules:
     Humblr.Frontend
     Humblr.Frontend.Actions
-    Humblr.Frontend.CMark
     Humblr.Frontend.Types
     Humblr.Frontend.View
 
