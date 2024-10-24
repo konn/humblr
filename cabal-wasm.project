@@ -3,7 +3,7 @@ import: cabal-common.project
 packages:
   humblr-*/*.cabal
 
-optimization: False
+optimization: 2
 active-repositories: hackage.haskell.org
 jobs: $ncpus
 semaphore: True
