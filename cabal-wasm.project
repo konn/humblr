@@ -1,7 +1,18 @@
+with-compiler: wasm32-wasi-9.10.1
 import: cabal-common.project
-packages: */*.cabal
-with-compiler: wasm32-wasi-ghc-9.10.0.20240412
-optimization: 2
+packages:
+  humblr-*/*.cabal
+
+optimization: False
+active-repositories: hackage.haskell.org
+jobs: $ncpus
+semaphore: True
+
+source-repository-package
+  type: git
+  location: https://github.com/amesgen/jsaddle-wasm.git
+  tag: be129c788f8ca1ea2e9cc1515397c1a46d02bb41
+
 allow-newer:
   base,
   bytestring,
@@ -12,13 +23,41 @@ allow-newer:
   template-haskell,
   text,
   time,
+  jsaddle:lens,
+  lens
 
--- source-repository-package
---   type: git
---   location: https://github.com/amesgen/splitmix
---   tag: 83b906c4bcdc2720546f1779a16eb65e8e12ecba
-package QuickCheck
-  flags: -templateHaskell
+source-repository-package
+  type: git
+  location: https://github.com/amesgen/splitmix
+  tag: 83b906c4bcdc2720546f1779a16eb65e8e12ecba
+
+source-repository-package
+  type: git
+  location: https://github.com/amesgen/miso
+  tag: bb9ce9a3dd03a7c1ac945943f65955ab10a53011
+
+source-repository-package
+  type: git
+  location: https://github.com/amesgen/jsaddle-wasm
+  tag: be129c788f8ca1ea2e9cc1515397c1a46d02bb41
 
 package reflection
   flags: -template-haskell
+
+package QuickCheck
+  flags: -templateHaskell
+
+allow-newer:
+  base,
+  bytestring,
+  containers,
+  deepseq,
+  filepath,
+  ghc-prim,
+  template-haskell,
+  text,
+  time
+
+constraints:
+  jsaddle ==0.9.9.0,
+  jsaddle-dom ==0.9.9.0,

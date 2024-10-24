@@ -11,5 +11,6 @@
   "files.associations": {
     "cabal*.project*": "cabal"
   },
-  "haskell.formattingProvider": "fourmolu"
+  "haskell.formattingProvider": "fourmolu",
+  "haskell.sessionLoading": "multipleComponents"
 }

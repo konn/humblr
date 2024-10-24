@@ -1,5 +1,5 @@
 templateDirs: []
-hpack: true
+hpack: false
 
 defaults:
   template: monorepo-single
@@ -7,8 +7,8 @@ defaults:
   noProject: true
 
 params:
-  monorepo: humblr
+  monorepo: ghc-wasm-earthly
   author-name: Hiromi ISHII
   author-email: konn.jinro_at_gmail.com
   github-username: konn
-  ghc: 9.10.1
+  ghc: "9.10.1 || == 9.10.0.20240412"
