@@ -24,7 +24,7 @@ import Control.Exception.Safe (Exception (..), tryAny)
 import Data.Generics.Labels ()
 import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
-import qualified Data.Text as T
+import Data.Text qualified as T
 import Humblr.Frontend.Actions
 import Humblr.Frontend.Types
 import Miso
@@ -44,16 +44,13 @@ viewModel m@Model {..} =
 
 headerView :: Model -> View Action
 headerView _ =
-  div_
-    [class_ "header-content"]
-    [ section_
-        [class_ "hero is-light"]
+  section_
+    [class_ "hero"]
+    [ div_
+        [class_ "hero-body"]
         [ div_
-            [class_ "hero-body"]
-            [ div_
-                [class_ "container has-text-centered"]
-                [ h1_ [class_ "title"] [a_ [onClick $ gotoTop Nothing] ["ごはんぶらー"]]
-                ]
+            [class_ "container has-text-centered"]
+            [ h1_ [class_ "title"] [a_ [onClick $ gotoTop Nothing] ["ごはんぶらー"]]
             ]
         ]
     ]
@@ -72,7 +69,7 @@ footerView =
             , a_ [href_ "https://haskell-miso.org"] ["Miso"]
             , ", "
             , a_ [href_ "https://www.cloudflare.com/developer-platform/workers/"] ["Cloudflare Workers"]
-            , ", and"
+            , ", and "
             , a_ [href_ "https://bulma.io"] ["Bulma"]
             , "."
             ]

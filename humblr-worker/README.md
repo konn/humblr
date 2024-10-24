@@ -1,4 +1,4 @@
-# humblr-workers
+# humblr-worker
 
 ## Copyright
 

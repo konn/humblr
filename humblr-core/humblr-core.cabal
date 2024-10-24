@@ -45,8 +45,11 @@ library
   build-depends:
     aeson,
     bytestring,
+    cmark,
     containers,
+    generic-lens,
     http-media,
+    lens,
     servant,
     servant-auth-lite,
     text,
@@ -54,6 +57,9 @@ library
 
   hs-source-dirs: src
   -- cabal-gild: discover src --exclude=src/**/Internal.hs --exclude=src/**/Internal/**/*.hs
-  exposed-modules: Humblr.Types
+  exposed-modules:
+    Humblr.CMark
+    Humblr.Types
+
   -- cabal-gild: discover src --include=src/**/Internal.hs --include=src/**/Internal/**/*.hs
   other-modules:
