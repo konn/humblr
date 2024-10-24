@@ -1,6 +1,6 @@
 import { WASI } from '@cloudflare/workers-wasi';
 import ghc_wasm_jsffi from './ghc_wasm_jsffi.js';
-import wasm_module from './handlers.wasm';
+import wasm_module from './worker.wasm';
 
 const wasi = new WASI();
 
