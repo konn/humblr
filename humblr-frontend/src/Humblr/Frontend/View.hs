@@ -35,18 +35,17 @@ import Servant.Auth.Client ()
 
 viewModel :: Model -> View Action
 viewModel m@Model {..} =
-  section_
-    [class_ "section"]
-    $ headerView m
-      : mainView m
-      ++ [ div_
+  div_ [] $
+    headerView m
+      : section_ [class_ "section"] (mainView m)
+      : [ div_
             [class_ "notification is-danger", style_ $ G.fromList [("position", "absolute"), ("bottom", "12pt")]]
             [ button_ [class_ "delete", onClick DismissError] []
             , h3_ [class_ "subtitle"] [text title]
             , text message
             ]
-         | MkErrorMessage {..} <- maybeToList errorMessage
-         ]
+        | MkErrorMessage {..} <- maybeToList errorMessage
+        ]
       ++ [footerView]
 
 mainView :: Model -> [View Action]
