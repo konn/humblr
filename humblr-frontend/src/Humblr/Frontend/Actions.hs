@@ -107,9 +107,7 @@ updateModel SaveEditingArticle m =
                             , message = toMisoString $ displayException err
                             }
                           (Just m.mode)
-                    Right NoContent -> do
-                      liftIO $ threadDelay 500_000
-                      pure NoOp
+                    Right NoContent -> pure $ openArticle original.slug
                | EditedArticle {..} <- m ^.. #mode . #_EditingArticle
                ]
 updateModel NewArticle m =
