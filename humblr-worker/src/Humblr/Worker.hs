@@ -115,6 +115,7 @@ frontend =
     , newArticle = serveIndex
     , editArticle = const serveIndex
     , articlePage = const serveIndex
+    , adminHome = serveIndex
     }
 
 serveIndex :: Worker HumblrEnv Raw
@@ -365,13 +366,19 @@ createArticle ArticleSeed {..} = do
       tagIds = V.mapMaybe (either (const Nothing) (Just . (.id)) . D1.parseD1RowView @TagRow) $ V.concatMap (.results) rawTagIds
       artId =
         either (error "Failed to parse article") (.id) $
-          D1.parseD1RowView @ArticleRow $
+          D1.parseD1RowView @ArticleIdRow $
             V.head rawArtId.results
-  void $ mapM (bind tagArtQ artId) tagIds
+  void $
+    liftIO . D1.batch d1
+      =<< mapM (bind tagArtQ artId) tagIds
+
+newtype ArticleIdRow = ArticleIdRow {id :: ArticleId}
+  deriving (Show, Eq, Ord, Generic)
+  deriving anyclass (FromD1Row)
 
 mkInsertArticleQ :: App (Preparation '[ArticleSeed])
 mkInsertArticleQ =
-  prepare "INSERT INTO articles (body, createdAt, lastUpdate, slug) VALUES (?1, ?2, ?3, ?4, ?5)" <&> \prep ->
+  prepare "INSERT INTO articles (body, createdAt, lastUpdate, slug) VALUES (?1, ?2, ?3, ?4)" <&> \prep ->
     Preparation \ArticleSeed {..} -> do
       now <- liftIO getCurrentTime
       liftIO $

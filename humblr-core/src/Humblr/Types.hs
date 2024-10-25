@@ -114,11 +114,15 @@ data ArticleUpdate = ArticleUpdate {body :: T.Text, tags :: [T.Text]}
   deriving stock (Generic, Show, Eq)
   deriving anyclass (FromJSON, ToJSON)
 
+-- FIXME: admin frontends must be guarded behind a RequireUser.
+-- Currently, miso doesn't support adding unsupported middleware to Route,
+-- so we must make sure the endpoint is guarded behind ZeroTrust.
 data FrontendRoutes mode = FrontendRoutes
   { articlePage :: mode :- "articles" :> Capture "slug" T.Text :> Raw
+  , tagArticles :: mode :- "tags" :> Capture "tag" T.Text :> QueryParam "page" Word :> Raw
   , editArticle :: mode :- "admin" :> "edit" :> Capture "slug" T.Text :> Raw
   , newArticle :: mode :- "admin" :> "new" :> Raw
-  , tagArticles :: mode :- "tags" :> Capture "tag" T.Text :> QueryParam "page" Word :> Raw
+  , adminHome :: mode :- "admin" :> Raw
   , topPage :: mode :- QueryParam "page" Word :> Raw
   }
   deriving (Generic)

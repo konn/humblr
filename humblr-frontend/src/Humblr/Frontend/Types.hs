@@ -44,13 +44,6 @@ module Humblr.Frontend.Types (
   module Humblr.Types,
   adminAPI,
   newTagInputId,
-  HasEditView (..),
-  saveAction,
-  slugG,
-  viewStateT,
-  bodyT,
-  tagsT,
-  newTagT,
 ) where
 
 import Control.Lens
@@ -61,7 +54,6 @@ import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Text qualified as T
 import Data.Time (UTCTime)
-import GHC.Base (Proxy#, proxy#)
 import GHC.Generics (Generic)
 import Humblr.Types
 import Language.Javascript.JSaddle
@@ -201,78 +193,3 @@ callApi act = do
 
 newTagInputId :: MisoString
 newTagInputId = "new-tag-input"
-
-class HasEditView a where
-  viewStateL :: Lens' a EditViewState
-  slugL :: Either (Getter a MisoString) (Lens' a MisoString)
-  tagsL :: Lens' a (Seq MisoString)
-  newTagL :: Lens' a MisoString
-  bodyL :: Lens' a MisoString
-  currentArticle :: a -> Article
-  saveAction# :: Proxy# a -> Action
-
-slugG :: (HasEditView a) => Getter a MisoString
-{-# INLINE slugG #-}
-slugG = case slugL of
-  Left g -> g
-  Right l -> l
-
-instance HasEditView EditedArticle where
-  viewStateL = #viewState
-  tagsL = #edition . #tags
-  bodyL = #edition . #body
-  newTagL = #edition . #newTag
-  slugL = Left $ #original . #slug
-  currentArticle art =
-    Article
-      { updatedAt = art.original.updatedAt
-      , tags = F.toList art.edition.tags
-      , slug = art.original.slug
-      , createdAt = art.original.createdAt
-      , body = art.edition.body
-      }
-  saveAction# _ = SaveEditingArticle
-
-instance HasEditView NewArticle where
-  viewStateL = #viewState
-  tagsL = #fragment . #tags
-  bodyL = #fragment . #body
-  slugL = Right #slug
-  newTagL = #fragment . #newTag
-  currentArticle art =
-    Article
-      { updatedAt = art.dummyDate
-      , tags = F.toList art.fragment.tags
-      , slug = art.slug
-      , createdAt = art.dummyDate
-      , body = art.fragment.body
-      }
-  saveAction# _ = CreateNewArticle
-
-saveAction :: forall state -> (HasEditView state) => Action
-{-# INLINE saveAction #-}
-saveAction state = saveAction# @state proxy#
-
-viewStateT :: Traversal' Mode EditViewState
-viewStateT =
-  failing
-    (#_EditingArticle . viewStateL)
-    (#_CreatingArticle . viewStateL)
-
-bodyT :: Traversal' Mode MisoString
-bodyT =
-  failing
-    (#_EditingArticle . bodyL)
-    (#_CreatingArticle . bodyL)
-
-tagsT :: Traversal' Mode (Seq MisoString)
-tagsT =
-  failing
-    (#_EditingArticle . tagsL)
-    (#_CreatingArticle . tagsL)
-
-newTagT :: Traversal' Mode MisoString
-newTagT =
-  failing
-    (#_EditingArticle . newTagL)
-    (#_CreatingArticle . newTagL)

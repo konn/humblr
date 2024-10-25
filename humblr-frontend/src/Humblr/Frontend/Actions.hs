@@ -2,15 +2,18 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MagicHash #-}
 {-# LANGUAGE MonoLocalBinds #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RequiredTypeArguments #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -23,6 +26,13 @@ module Humblr.Frontend.Actions (
   openTopPage,
   openArticle,
   openTagArticles,
+  HasEditView (..),
+  saveAction,
+  slugG,
+  viewStateT,
+  bodyT,
+  tagsT,
+  newTagT,
 ) where
 
 import Control.Exception.Safe (Exception (..), tryAny)
@@ -32,15 +42,17 @@ import Data.Foldable qualified as F
 import Data.Generics.Labels ()
 import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
+import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, getCurrentTime)
 import Data.Time.Format (formatTime)
+import GHC.Base (Proxy#, proxy#)
 import Humblr.Frontend.Types
 import Language.Javascript.JSaddle (setProp, val)
 import Language.Javascript.JSaddle.Object (Object (..))
 import Miso
-import Miso.String (ToMisoString (toMisoString))
+import Miso.String (MisoString, ToMisoString (..))
 import Miso.String qualified as MisoString
 import Network.HTTP.Types (status404)
 import Servant.API
@@ -228,6 +240,8 @@ handleUrl url =
     newArticle m = m <# pure OpenNewArticle
     editArticle slug m = m <# pure (OpenEditArticle slug)
     tagArticles tag mcur m = m <# pure (OpenTagArticles tag mcur)
+    -- FIXME: Implement Admin Home Page
+    adminHome m = noEff m
 
 openTopPage :: Maybe Word -> Action
 openTopPage = openEndpoint . rootApiURIs.frontend.topPage
@@ -240,3 +254,81 @@ openTagArticles tag = openEndpoint . rootApiURIs.frontend.tagArticles tag
 
 openEndpoint :: URI -> Action
 openEndpoint = ChangeUrl
+
+class HasEditView a where
+  viewStateL :: Lens' a EditViewState
+  slugL :: Either (Getter a MisoString) (Lens' a MisoString)
+  tagsL :: Lens' a (Seq MisoString)
+  newTagL :: Lens' a MisoString
+  bodyL :: Lens' a MisoString
+  currentArticle :: a -> Article
+  saveAction# :: Proxy# a -> Action
+  cancelAction :: a -> Action
+
+slugG :: (HasEditView a) => Getter a MisoString
+{-# INLINE slugG #-}
+slugG = case slugL of
+  Left g -> g
+  Right l -> l
+
+instance HasEditView EditedArticle where
+  viewStateL = #viewState
+  tagsL = #edition . #tags
+  bodyL = #edition . #body
+  newTagL = #edition . #newTag
+  slugL = Left $ #original . #slug
+  currentArticle art =
+    Article
+      { updatedAt = art.original.updatedAt
+      , tags = F.toList art.edition.tags
+      , slug = art.original.slug
+      , createdAt = art.original.createdAt
+      , body = art.edition.body
+      }
+  saveAction# _ = SaveEditingArticle
+  cancelAction = openArticle . (.original.slug)
+
+instance HasEditView NewArticle where
+  viewStateL = #viewState
+  tagsL = #fragment . #tags
+  bodyL = #fragment . #body
+  slugL = Right #slug
+  newTagL = #fragment . #newTag
+  currentArticle art =
+    Article
+      { updatedAt = art.dummyDate
+      , tags = F.toList art.fragment.tags
+      , slug = art.slug
+      , createdAt = art.dummyDate
+      , body = art.fragment.body
+      }
+  saveAction# _ = CreateNewArticle
+  cancelAction _ = openTopPage Nothing
+
+saveAction :: forall state -> (HasEditView state) => Action
+{-# INLINE saveAction #-}
+saveAction state = saveAction# @state proxy#
+
+viewStateT :: Traversal' Mode EditViewState
+viewStateT =
+  failing
+    (#_EditingArticle . viewStateL)
+    (#_CreatingArticle . viewStateL)
+
+bodyT :: Traversal' Mode MisoString
+bodyT =
+  failing
+    (#_EditingArticle . bodyL)
+    (#_CreatingArticle . bodyL)
+
+tagsT :: Traversal' Mode (Seq MisoString)
+tagsT =
+  failing
+    (#_EditingArticle . tagsL)
+    (#_CreatingArticle . tagsL)
+
+newTagT :: Traversal' Mode MisoString
+newTagT =
+  failing
+    (#_EditingArticle . newTagL)
+    (#_CreatingArticle . newTagL)
