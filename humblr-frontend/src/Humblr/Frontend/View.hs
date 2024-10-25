@@ -21,18 +21,82 @@
 module Humblr.Frontend.View (viewModel) where
 
 import Data.Generics.Labels ()
+import Data.String (fromString)
+import Data.Time (defaultTimeLocale, formatTime)
+import Humblr.CMark qualified as CM
 import Humblr.Frontend.Actions
 import Humblr.Frontend.Types
 import Miso
+import Miso.String (toMisoString)
 import Servant.Auth.Client ()
 
 viewModel :: Model -> View Action
 viewModel m@Model {..} =
   section_
     [class_ "section"]
-    [ headerView m
-    , footerView
+    $ headerView m
+      : mainView m
+      ++ [footerView]
+
+mainView :: Model -> [View Action]
+mainView m = case m.mode of
+  Idle ->
+    [ div_ [class_ "content"] [progress_ [class_ "progress is-large"] ["Loading..."]]
     ]
+  TopPage topPage -> topPageView topPage
+  ArticlePage art -> []
+  EditingArticle art seed -> []
+  CreatingArticle slug edition -> []
+  TagArticles tag cur arts -> []
+  ErrorPage MkErrorPage {..} ->
+    [ h2_ [class_ "title"] [text title]
+    , p_ [class_ "content"] [text message]
+    ]
+
+topPageView :: TopPage -> [View Action]
+topPageView MkTopPage {..} =
+  [ h2_
+      [class_ "title"]
+      [ "Recent Articles ("
+      , fromString $ show $ page * 10 + 1
+      , "-"
+      , fromString $ show $ page * 10 + fromIntegral (length articles)
+      , ")"
+      ]
+  , p_
+      [class_ "content"]
+      [ div_
+          [class_ "fixed-grid has-1-cols-mobile has-3-cols-tablet has-4-cols"]
+          [ div_
+              [class_ "grid"]
+              [div_ [class_ "cell"] (map articleOverview articles)]
+          ]
+      ]
+  ]
+
+articleOverview :: Article -> View Action
+articleOverview Article {..} =
+  let linkToArticle = a_ [onClick $ openArticle slug]
+   in div_
+        [class_ "box theme-light"]
+        [ article_
+            [class_ "media"]
+            [ div_
+                [class_ "media-content"]
+                [ div_
+                    [class_ "content"]
+                    [ p_ [] [linkToArticle [rawHtml $ CM.commonmarkToHtml [] body]]
+                    ]
+                , nav_
+                    [class_ "level"]
+                    [ div_ [class_ "level-left"] []
+                    , div_
+                        [class_ "level-right"]
+                        [linkToArticle [small_ [] [fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" createdAt]]]
+                    ]
+                ]
+            ]
+        ]
 
 headerView :: Model -> View Action
 headerView _ =
@@ -42,7 +106,7 @@ headerView _ =
         [class_ "hero-body"]
         [ div_
             [class_ "container has-text-centered"]
-            [ h1_ [class_ "title"] [a_ [onClick $ gotoTop Nothing] ["ごはんぶらー"]]
+            [ h1_ [class_ "title"] [a_ [onClick $ openTopPage Nothing] ["ごはんぶらー"]]
             ]
         ]
     ]

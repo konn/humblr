@@ -62,6 +62,7 @@ library
     servant-client-core,
     servant-client-fetch,
     text,
+    time,
 
   hs-source-dirs: src
   -- cabal-gild: discover src --exclude=src/**/Internal.hs --exclude=src/**/Internal/**/*.hs

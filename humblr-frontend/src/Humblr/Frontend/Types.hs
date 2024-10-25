@@ -22,6 +22,8 @@ module Humblr.Frontend.Types (
   Model (..),
   initialModel,
   Mode (..),
+  TopPage (..),
+  ErrorPage (..),
   Action (..),
   ArticleSeed (..),
   ArticleEdition (..),
@@ -29,6 +31,7 @@ module Humblr.Frontend.Types (
   callApi,
   api,
   module Humblr.Types,
+  adminAPI,
 ) where
 
 import Control.Lens
@@ -40,7 +43,7 @@ import Humblr.Types
 import Miso
 import Miso.String (MisoString)
 import Servant.API
-import Servant.Auth.Client ()
+import Servant.Auth.Client (Token (..))
 import Servant.Client.FetchAPI
 import Servant.Client.Generic (genericClient)
 
@@ -58,13 +61,22 @@ data ArticleEdition = ArticleEdition {body :: !MisoString, tags :: ![T.Text]}
   deriving (Show, Eq, Ord, Generic)
 
 data Mode
-  = TopPage !Word ![Article]
+  = TopPage !TopPage
   | ArticlePage !Article
   | EditingArticle !Article !ArticleEdition
   | CreatingArticle !T.Text !ArticleEdition
   | TagArticles !T.Text !Word ![Article]
-  | ErrorPage !MisoString !MisoString
+  | ErrorPage !ErrorPage
   | Idle
+  deriving (Show, Generic, Eq)
+
+data TopPage = MkTopPage {page :: !Word, articles :: ![Article]}
+  deriving (Show, Generic, Eq)
+
+data ErrorPage = MkErrorPage
+  { title :: !MisoString
+  , message :: !MisoString
+  }
   deriving (Show, Generic, Eq)
 
 data Model = Model {mode :: !Mode, errorMessage :: !(Maybe T.Text)}
@@ -95,6 +107,9 @@ data Action
 
 api :: RestApi (AsClientT (FetchT JSM))
 api = (genericClient @RootAPI).apiRoutes
+
+adminAPI :: AdminAPI (AsClientT (FetchT JSM))
+adminAPI = api.adminAPI (CloudflareToken Nothing)
 
 type AsRoute :: Type -> Type
 data AsRoute a

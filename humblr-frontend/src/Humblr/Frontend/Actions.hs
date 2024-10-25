@@ -20,7 +20,8 @@
 module Humblr.Frontend.Actions (
   updateModel,
   openEndpoint,
-  gotoTop,
+  openTopPage,
+  openArticle,
 ) where
 
 import Control.Exception.Safe (Exception (..), tryAny)
@@ -48,7 +49,7 @@ updateModel (OpenTopPage mcur) m =
     case eith of
       Left err -> pure $ ReportError $ toMisoString $ displayException err
       Right arts -> pure $ ShowTopPage (fromMaybe 0 mcur) arts
-updateModel (ShowTopPage cur arts) m = noEff m {mode = TopPage cur arts}
+updateModel (ShowTopPage page articles) m = noEff m {mode = TopPage MkTopPage {..}}
 updateModel (OpenArticle slug) m =
   m <# withArticleSlug slug (pure . ShowArticle)
 updateModel (ShowArticle article) m = noEff m {mode = ArticlePage article}
@@ -74,8 +75,8 @@ updateModel (ShowTagArticles tag cur arts) m =
   noEff m {mode = TagArticles tag cur arts}
 updateModel (ReportError msg) m = noEff m {errorMessage = Just msg}
 updateModel DissmissError m = noEff m {errorMessage = Nothing}
-updateModel (ShowErrorPage title msg) m =
-  noEff m {mode = ErrorPage title msg}
+updateModel (ShowErrorPage title message) m =
+  noEff m {mode = ErrorPage MkErrorPage {..}}
 
 toArticleSeed :: Article -> ArticleEdition
 toArticleSeed art = ArticleEdition {body = toMisoString art.body, tags = art.tags}
@@ -117,8 +118,11 @@ handleUrl url =
     editArticle slug m = m <# pure (OpenEditArticle slug)
     tagArticles tag mcur m = m <# pure (OpenTagArticles tag mcur)
 
-gotoTop :: Maybe Word -> Action
-gotoTop = openEndpoint . rootApiURIs.frontend.topPage
+openTopPage :: Maybe Word -> Action
+openTopPage = openEndpoint . rootApiURIs.frontend.topPage
+
+openArticle :: T.Text -> Action
+openArticle = openEndpoint . rootApiURIs.frontend.articlePage
 
 openEndpoint :: URI -> Action
 openEndpoint = ChangeUrl
