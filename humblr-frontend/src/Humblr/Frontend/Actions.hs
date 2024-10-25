@@ -27,11 +27,15 @@ module Humblr.Frontend.Actions (
 
 import Control.Exception.Safe (Exception (..), tryAny)
 import Control.Lens
+import Control.Monad.IO.Class (liftIO)
+import Data.Foldable qualified as F
 import Data.Generics.Labels ()
-import Data.List qualified as L
 import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
+import Data.Sequence qualified as Seq
 import Data.Text qualified as T
+import Data.Time (defaultTimeLocale, getCurrentTime)
+import Data.Time.Format (formatTime)
 import Humblr.Frontend.Types
 import Language.Javascript.JSaddle (setProp, val)
 import Language.Javascript.JSaddle.Object (Object (..))
@@ -69,6 +73,8 @@ updateModel (OpenArticle slug) m =
     consoleLog $ "Opening article: " <> toMisoString slug
     withArticleSlug slug (pure . ShowArticle)
 updateModel (ShowArticle article) m = noEff m {mode = ArticlePage article}
+updateModel (SwitchEditViewState st) m =
+  noEff $ m & #mode . viewStateT .~ st
 updateModel (OpenEditArticle slug) m =
   m <# withArticleSlug slug (pure . ShowEditArticle)
 updateModel (ShowEditArticle article) m =
@@ -82,24 +88,21 @@ updateModel (ShowEditArticle article) m =
               , viewState = Edit
               }
       }
-updateModel (SwitchEditViewState st) m =
-  noEff $ m & #mode . #_EditingArticle . #viewState .~ st
 updateModel (SetEditingArticleContent f) m =
-  noEff $ m & #mode . #_EditingArticle . #edition . #body .~ f
+  noEff $ m & #mode . bodyT .~ f
 updateModel (DeleteEditingTag f) m =
-  noEff $ m & #mode . #_EditingArticle . #edition . #tags %~ L.delete f
-updateModel AddEditingTag m =
-  let m' =
-        m
-          & #mode . #_EditingArticle . #edition %~ \e ->
-            if MisoString.null e.newTag
-              then e
-              else e {tags = e.tags ++ [e.newTag], newTag = ""}
-   in m' <# do
-        field <- getElementById newTagInputId
-        emp <- val ("" :: T.Text)
-        setProp "value" emp $ Object field
-        pure NoOp
+  noEff $ m & #mode . tagsT %~ Seq.filter (/= f)
+updateModel AddEditingTag m
+  | MisoString.null (m ^. #mode . newTagT) = noEff m
+  | otherwise =
+      let m' =
+            m
+              & #mode . tagsT |>~ m ^. #mode . newTagT
+       in m' <# do
+            field <- getElementById newTagInputId
+            emp <- val ("" :: T.Text)
+            setProp "value" emp $ Object field
+            pure NoOp
 updateModel SaveEditingArticle m =
   m {mode = Idle}
     `batchEff` [ do
@@ -121,15 +124,46 @@ updateModel SaveEditingArticle m =
                     Right NoContent -> pure $ openArticle original.slug
                | EditedArticle {..} <- m ^.. #mode . #_EditingArticle
                ]
+updateModel CreateNewArticle m =
+  m {mode = Idle}
+    `batchEff` [ do
+                  eith <-
+                    tryAny $
+                      callApi $
+                        (api.adminAPI (CloudflareToken Nothing)).postArticle
+                          ArticleSeed
+                            { tags = F.toList fragment.tags
+                            , slug = slug
+                            , body = fragment.body
+                            }
+                  case eith of
+                    Left err ->
+                      pure $
+                        ShowErrorNotification
+                          MkErrorMessage
+                            { title = "Could not save article " <> slug
+                            , message = toMisoString $ displayException err
+                            }
+                          (Just m.mode)
+                    Right NoContent -> pure $ openArticle slug
+               | MkNewArticle {..} <- m ^.. #mode . #_CreatingArticle
+               ]
 updateModel (SetNewTagName f) m =
-  noEff $ m & #mode . #_EditingArticle . #edition . #newTag .~ f
-updateModel NewArticle m =
+  noEff $ m & #mode . newTagT .~ f
+updateModel OpenNewArticle m =
+  m <# do ShowNewArticle <$> liftIO getCurrentTime
+updateModel (ShowNewArticle stamp) m =
   noEff
     m
       { mode =
           CreatingArticle
-            ""
-            ArticleEdition {body = mempty, tags = mempty, newTag = "", composingTag = False}
+            MkNewArticle
+              { slug = T.pack $ formatTime defaultTimeLocale "%Y%m%d-%H-%M" stamp
+              , fragment =
+                  ArticleFragment {body = mempty, tags = mempty, newTag = "", composingTag = False}
+              , viewState = Edit
+              , dummyDate = stamp
+              }
       }
 updateModel (OpenTagArticles tag mcur) m =
   m <# do
@@ -191,7 +225,7 @@ handleUrl url =
     routes = FrontendRoutes {..}
     topPage mcur m = m <# pure (OpenTopPage mcur)
     articlePage slug m = m <# pure (OpenArticle slug)
-    newArticle m = m <# pure NewArticle
+    newArticle m = m <# pure OpenNewArticle
     editArticle slug m = m <# pure (OpenEditArticle slug)
     tagArticles tag mcur m = m <# pure (OpenTagArticles tag mcur)
 

@@ -2,9 +2,11 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MagicHash #-}
 {-# LANGUAGE MonoLocalBinds #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLabels #-}
@@ -20,9 +22,11 @@
 
 module Humblr.Frontend.View (viewModel) where
 
+import Control.Lens ((^.))
 import Data.Bool (bool)
 import Data.Char qualified as C
 import Data.Foldable (toList)
+import Data.Foldable qualified as F
 import Data.Generics.Labels ()
 import Data.Maybe (fromMaybe, maybeToList)
 import Data.String (fromString)
@@ -31,7 +35,7 @@ import GHC.IsList qualified as G
 import Humblr.CMark qualified as CM
 import Humblr.Frontend.Actions
 import Humblr.Frontend.Types
-import Miso
+import Miso hiding (view)
 import Miso.String (MisoString, toMisoString)
 import Miso.String qualified as MS
 import Servant.Auth.Client ()
@@ -59,17 +63,26 @@ mainView m = case m.mode of
   TopPage topPage -> topPageView topPage
   ArticlePage art -> articleView FrontEndArticle art
   EditingArticle edit -> editView edit
-  CreatingArticle slug edition -> []
+  CreatingArticle newArticle -> newArticleView newArticle
   TagArticles tag cur arts -> []
   ErrorPage MkErrorPage {..} ->
     [ h2_ [class_ "title"] [text title]
     , p_ [class_ "content"] [text message]
     ]
 
+newArticleView :: NewArticle -> [View Action]
+newArticleView na =
+  h2_ [class_ "title"] [text "New Article"]
+    : generalEditView na
+
 editView :: EditedArticle -> [View Action]
 editView ea@EditedArticle {..} =
-  [ h2_ [class_ "title"] [text "Editing ", code_ [] [text original.slug]]
-  , div_
+  h2_ [class_ "title"] [text "Editing ", code_ [] [text original.slug]]
+    : generalEditView ea
+
+generalEditView :: forall state. (HasEditView state) => state -> [View Action]
+generalEditView ea =
+  [ div_
       [class_ "content"]
       [ div_
           [class_ "tabs"]
@@ -80,16 +93,15 @@ editView ea@EditedArticle {..} =
                   [ a_ linkAtts [toEditIcon mode, text (toMisoString $ show mode)]
                   ]
               | mode <- [Edit, Preview]
-              , let isActive = mode == viewState
+              , let isActive = mode == ea ^. viewStateL
                     (attrs, linkAtts) =
                       if isActive
                         then ([class_ "is-active"], [])
                         else ([], [onClick $ SwitchEditViewState mode])
               ]
           ]
-      , div_
-          [class_ "box"]
-          $ editMainView viewState ea
+      , div_ [class_ "box"] $
+          editMainView (ea ^. viewStateL) ea
       , div_
           [class_ "field is-grouped is-grouped-right"]
           [ -- TODO: Confirm before cancel
@@ -97,7 +109,7 @@ editView ea@EditedArticle {..} =
               [class_ "control"]
               [ button_
                   [ class_ "button is-light"
-                  , onClick $ openArticle original.slug
+                  , onClick $ openArticle $ ea ^. slugG
                   ]
                   ["Cancel"]
               ]
@@ -105,7 +117,7 @@ editView ea@EditedArticle {..} =
               [class_ "control"]
               [ button_
                   [ class_ "button is-primary"
-                  , onClick SaveEditingArticle
+                  , onClick $ saveAction state
                   ]
                   ["Submit"]
               ]
@@ -116,11 +128,11 @@ editView ea@EditedArticle {..} =
 data ArticleViewMode = PreviewArticle | FrontEndArticle
   deriving (Show, Eq)
 
-editMainView :: EditViewState -> EditedArticle -> [View Action]
+editMainView :: (HasEditView ea) => EditViewState -> ea -> [View Action]
 editMainView Edit art =
-  let validTagName =
-        not (MS.null art.edition.newTag)
-          && MS.all (not . C.isSpace) (MS.strip art.edition.newTag)
+  let newTag = MS.strip $ art ^. newTagL
+      validTagName =
+        not (MS.null newTag) && MS.all (not . C.isSpace) newTag
    in [ div_
           [class_ "field"]
           [ div_
@@ -130,7 +142,7 @@ editMainView Edit art =
                   , rows_ "5"
                   , onInput SetEditingArticleContent
                   ]
-                  [text art.edition.body]
+                  [text $ art ^. bodyL]
               ]
           ]
       , let btnCls =
@@ -171,20 +183,14 @@ editMainView Edit art =
                       []
                   ]
               ]
-          | tag <- art.edition.tags
+          | tag <- F.toList $ art ^. tagsL
           ]
       ]
 editMainView Preview art =
-  [ div_ [class_ "content"] $
-      articleView
+  [ div_ [class_ "content"]
+      $ articleView
         PreviewArticle
-        Article
-          { updatedAt = art.original.updatedAt
-          , tags = art.edition.tags
-          , slug = art.original.slug
-          , createdAt = art.original.createdAt
-          , body = art.edition.body
-          }
+      $ currentArticle art
   ]
 
 toEditIcon :: EditViewState -> View Action
@@ -203,7 +209,7 @@ articleView mode Article {..} =
               [class_ "control"]
               [ div_
                   [class_ "tags"]
-                  [ span_ [class_ "tag"] [linkToTag FrontEndArticle tag [text tag]]
+                  [ span_ [class_ "tag"] [linkToTag mode tag [text tag]]
                   ]
               ]
           | tag <- tags

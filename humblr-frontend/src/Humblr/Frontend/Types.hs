@@ -2,15 +2,18 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MagicHash #-}
 {-# LANGUAGE MonoLocalBinds #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RequiredTypeArguments #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeData #-}
@@ -27,9 +30,10 @@ module Humblr.Frontend.Types (
   TopPage (..),
   ErrorPage (..),
   ErrorMessage (..),
-  EditedArticle (..),
+  ArticleFragment (..),
   EditViewState (..),
-  ArticleEdition (..),
+  EditedArticle (..),
+  NewArticle (..),
   toArticleEdition,
   toArticleUpdate,
   Action (..),
@@ -40,12 +44,24 @@ module Humblr.Frontend.Types (
   module Humblr.Types,
   adminAPI,
   newTagInputId,
+  HasEditView (..),
+  saveAction,
+  slugG,
+  viewStateT,
+  bodyT,
+  tagsT,
+  newTagT,
 ) where
 
 import Control.Lens
+import Data.Foldable qualified as F
 import Data.Generics.Labels ()
 import Data.Kind (Type)
+import Data.Sequence (Seq)
+import Data.Sequence qualified as Seq
 import Data.Text qualified as T
+import Data.Time (UTCTime)
+import GHC.Base (Proxy#, proxy#)
 import GHC.Generics (Generic)
 import Humblr.Types
 import Language.Javascript.JSaddle
@@ -73,29 +89,43 @@ data Mode
   = TopPage !TopPage
   | ArticlePage !Article
   | EditingArticle !EditedArticle
-  | CreatingArticle !T.Text !ArticleEdition
+  | CreatingArticle !NewArticle
   | TagArticles !T.Text !Word ![Article]
   | ErrorPage !ErrorPage
   | Idle
   deriving (Show, Generic, Eq)
 
-data ArticleEdition = ArticleEdition
+data NewArticle = MkNewArticle
+  { slug :: !MisoString
+  , fragment :: !ArticleFragment
+  , viewState :: !EditViewState
+  , dummyDate :: !UTCTime
+  }
+  deriving (Show, Generic, Eq)
+
+data ArticleFragment = ArticleFragment
   { body :: !MisoString
-  , tags :: ![MisoString]
+  , tags :: !(Seq MisoString)
   , newTag :: !MisoString
   , composingTag :: !Bool
   }
   deriving (Show, Eq, Generic)
 
-toArticleUpdate :: ArticleEdition -> ArticleUpdate
-toArticleUpdate ArticleEdition {..} = ArticleUpdate {..}
+toArticleUpdate :: ArticleFragment -> ArticleUpdate
+toArticleUpdate ArticleFragment {..} = ArticleUpdate {tags = F.toList tags, ..}
 
-toArticleEdition :: Article -> ArticleEdition
-toArticleEdition Article {..} = ArticleEdition {newTag = "", composingTag = False, ..}
+toArticleEdition :: Article -> ArticleFragment
+toArticleEdition Article {..} =
+  ArticleFragment
+    { newTag = ""
+    , composingTag = False
+    , tags = Seq.fromList tags
+    , ..
+    }
 
 data EditedArticle = EditedArticle
   { original :: !Article
-  , edition :: !ArticleEdition
+  , edition :: !ArticleFragment
   , viewState :: !EditViewState
   }
   deriving (Show, Eq, Generic)
@@ -128,7 +158,9 @@ data Action
   | ShowTopPage !TopPage
   | OpenArticle !T.Text
   | ShowArticle !Article
-  | NewArticle
+  | OpenNewArticle
+  | ShowNewArticle !UTCTime
+  | CreateNewArticle
   | OpenEditArticle !T.Text
   | ShowEditArticle !Article
   | SwitchEditViewState !EditViewState
@@ -169,3 +201,78 @@ callApi act = do
 
 newTagInputId :: MisoString
 newTagInputId = "new-tag-input"
+
+class HasEditView a where
+  viewStateL :: Lens' a EditViewState
+  slugL :: Either (Getter a MisoString) (Lens' a MisoString)
+  tagsL :: Lens' a (Seq MisoString)
+  newTagL :: Lens' a MisoString
+  bodyL :: Lens' a MisoString
+  currentArticle :: a -> Article
+  saveAction# :: Proxy# a -> Action
+
+slugG :: (HasEditView a) => Getter a MisoString
+{-# INLINE slugG #-}
+slugG = case slugL of
+  Left g -> g
+  Right l -> l
+
+instance HasEditView EditedArticle where
+  viewStateL = #viewState
+  tagsL = #edition . #tags
+  bodyL = #edition . #body
+  newTagL = #edition . #newTag
+  slugL = Left $ #original . #slug
+  currentArticle art =
+    Article
+      { updatedAt = art.original.updatedAt
+      , tags = F.toList art.edition.tags
+      , slug = art.original.slug
+      , createdAt = art.original.createdAt
+      , body = art.edition.body
+      }
+  saveAction# _ = SaveEditingArticle
+
+instance HasEditView NewArticle where
+  viewStateL = #viewState
+  tagsL = #fragment . #tags
+  bodyL = #fragment . #body
+  slugL = Right #slug
+  newTagL = #fragment . #newTag
+  currentArticle art =
+    Article
+      { updatedAt = art.dummyDate
+      , tags = F.toList art.fragment.tags
+      , slug = art.slug
+      , createdAt = art.dummyDate
+      , body = art.fragment.body
+      }
+  saveAction# _ = CreateNewArticle
+
+saveAction :: forall state -> (HasEditView state) => Action
+{-# INLINE saveAction #-}
+saveAction state = saveAction# @state proxy#
+
+viewStateT :: Traversal' Mode EditViewState
+viewStateT =
+  failing
+    (#_EditingArticle . viewStateL)
+    (#_CreatingArticle . viewStateL)
+
+bodyT :: Traversal' Mode MisoString
+bodyT =
+  failing
+    (#_EditingArticle . bodyL)
+    (#_CreatingArticle . bodyL)
+
+tagsT :: Traversal' Mode (Seq MisoString)
+tagsT =
+  failing
+    (#_EditingArticle . tagsL)
+    (#_CreatingArticle . tagsL)
+
+newTagT :: Traversal' Mode MisoString
+newTagT =
+  failing
+    (#_EditingArticle . newTagL)
+    (#_CreatingArticle . newTagL)

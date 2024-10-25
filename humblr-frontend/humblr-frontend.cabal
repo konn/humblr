@@ -50,6 +50,7 @@ library
   import: defaults
   build-depends:
     cmark,
+    containers,
     generic-lens,
     ghc-wasm-jsobjects,
     http-types,
