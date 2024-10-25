@@ -20,6 +20,7 @@
 
 module Humblr.Frontend.View (viewModel) where
 
+import Data.Char qualified as C
 import Data.Foldable (toList)
 import Data.Generics.Labels ()
 import Data.Maybe (fromMaybe, maybeToList)
@@ -31,6 +32,7 @@ import Humblr.Frontend.Actions
 import Humblr.Frontend.Types
 import Miso
 import Miso.String (MisoString, toMisoString)
+import Miso.String qualified as MS
 import Servant.Auth.Client ()
 
 viewModel :: Model -> View Action
@@ -115,28 +117,59 @@ data ArticleViewMode = PreviewArticle | FrontEndArticle
 
 editMainView :: EditViewState -> EditedArticle -> [View Action]
 editMainView Edit art =
-  [ div_
-      [class_ "field"]
-      [ div_
-          [class_ "control"]
-          [ textarea_
-              [ class_ "textarea is-large"
-              , rows_ "5"
-              , onInput SetEditingArticleContent
+  let validTagName =
+        not (MS.null art.edition.newTag)
+          && MS.all (not . C.isSpace) (MS.strip art.edition.newTag)
+   in [ div_
+          [class_ "field"]
+          [ div_
+              [class_ "control"]
+              [ textarea_
+                  [ class_ "textarea is-large"
+                  , rows_ "5"
+                  , onInput SetEditingArticleContent
+                  ]
+                  [text art.edition.body]
               ]
-              [text art.edition.body]
+          ]
+      , let disabled = not validTagName
+            tagNameCls =
+              if disabled
+                then class_ "input is-danger"
+                else class_ "input"
+            btnCls =
+              class_ $
+                MS.unwords $
+                  "button" : if disabled then ["is-disabled"] else ["is-green"]
+            btnAttrs = btnCls : [onClick AddEditingTag | not disabled]
+         in div_
+              [class_ "field is-grouped"]
+              [ label_ [class_ "label"] ["Tags"]
+              , div_
+                  [tagNameCls, onInput $ SetNewTagName . MS.strip]
+                  [ input_ [class_ "input"]
+                  , iconLeft "sell"
+                  ]
+              , div_
+                  [class_ "control"]
+                  [button_ btnAttrs [icon "plus"]]
+              ]
+      , div_ [class_ "field is-grouped is-grouped-multiline"] $
+          [ div_
+              [class_ "control"]
+              [ div_
+                  [class_ "tags has-addons"]
+                  [ a_ [class_ "tag"] [text tag]
+                  , a_
+                      [ class_ "tag is-delete"
+                      , onClick $ DeleteEditingTag tag
+                      ]
+                      []
+                  ]
+              ]
+          | tag <- art.edition.tags
           ]
       ]
-  , div_
-      [class_ "field"]
-      [ label_ [class_ "label"] ["Tags"]
-      , div_
-          [class_ "control has-icons-left"]
-          [ input_ [class_ "input"]
-          , iconLeft "sell"
-          ]
-      ]
-  ]
 editMainView Preview art =
   [ div_ [class_ "content"] $
       articleView
@@ -160,27 +193,10 @@ articleView mode Article {..} =
         case mode of
           FrontEndArticle -> a_ [onClick $ openArticle slug]
           PreviewArticle -> a_ []
-      tagsView = case mode of
-        FrontEndArticle ->
-          div_
-            [class_ "tags"]
-            [span_ [class_ "tag"] [linkToTag tag [text tag] | tag <- tags]]
-        PreviewArticle ->
-          div_ [class_ "field is-grouped is-grouped-multiline"] $
-            [ div_
-                [class_ "control"]
-                [ div_
-                    [class_ "tags has-addons"]
-                    [ a_ [class_ "tag"] [text tag]
-                    , a_
-                        [ class_ "tag is-delete"
-                        , onClick $ DeleteEditingTag tag
-                        ]
-                        []
-                    ]
-                ]
-            | tag <- tags
-            ]
+      tagsView =
+        div_
+          [class_ "tags"]
+          [span_ [class_ "tag"] [linkToTag mode tag [text tag] | tag <- tags]]
    in [ div_
           [class_ "box is-four-fifth"]
           [ div_
@@ -199,8 +215,9 @@ articleView mode Article {..} =
           ]
       ]
 
-linkToTag :: MisoString -> [View Action] -> View Action
-linkToTag tag = a_ [onClick $ openTagArticles tag Nothing]
+linkToTag :: ArticleViewMode -> MisoString -> [View Action] -> View Action
+linkToTag FrontEndArticle tag = a_ [onClick $ openTagArticles tag Nothing]
+linkToTag PreviewArticle _ = a_ []
 
 topPageView :: TopPage -> [View Action]
 topPageView MkTopPage {..} =
@@ -243,7 +260,7 @@ articleOverview Article {..} =
                         [class_ "level-left"]
                         [ div_
                             [class_ "tags are-normal"]
-                            [span_ [class_ "tag"] [linkToTag tag [text tag]] | tag <- tags]
+                            [span_ [class_ "tag"] [linkToTag FrontEndArticle tag [text tag]] | tag <- tags]
                         ]
                     , div_
                         [class_ "level-right"]
