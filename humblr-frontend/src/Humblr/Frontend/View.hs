@@ -20,19 +20,11 @@
 
 module Humblr.Frontend.View (viewModel) where
 
-import Control.Exception.Safe (Exception (..), tryAny)
 import Data.Generics.Labels ()
-import Data.Maybe (fromMaybe)
-import Data.Proxy (Proxy (..))
-import Data.Text qualified as T
 import Humblr.Frontend.Actions
 import Humblr.Frontend.Types
 import Miso
-import Miso.String (ToMisoString (toMisoString))
-import Network.HTTP.Types (status404)
-import Servant.API
 import Servant.Auth.Client ()
-import Servant.Client.FetchAPI
 
 viewModel :: Model -> View Action
 viewModel m@Model {..} =
