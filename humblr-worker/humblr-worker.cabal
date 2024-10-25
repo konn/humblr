@@ -76,6 +76,7 @@ executable humblr-worker
   import: defaults
   hs-source-dirs: app/frontend
   main-is: Main.hs
+  ghc-options: -O2
   -- cabal-gild: discover app/frontend --exclude=app/frontend/Main.hs
   other-modules:
 

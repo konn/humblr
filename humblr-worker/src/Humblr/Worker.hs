@@ -159,16 +159,19 @@ apiRoutes =
 
 putArticle :: AuthResult User -> T.Text -> ArticleUpdate -> Handler HumblrEnv NoContent
 putArticle user slug upd = protectIfConfigured user do
-  qs <- getPresetQueries
+  tryInsertTagQ <- mkTryInsertTagQ
+  lookupTagQ <- mkLookupTagNameQ
+  tagArticleQ <- mkTagArticleQ
+  lookSlugQ <- mkLookupSlugQ
   art <-
     either (\e -> serverError err500 {errBody = "Schema Error (article): " <> LBS8.pack e}) (pure . (.id))
       . D1.parseD1RowView @ArticleRow
       =<< maybe (serverError err404 {errBody = "Article not found: " <> LBS.fromStrict (TE.encodeUtf8 slug)}) (pure)
       =<< liftIO . (wait <=< D1.first)
-      =<< bind qs.lookupFromSlug slug
+      =<< bind lookSlugQ slug
   -- FIXME: make these two together with @art@ into a single batch.
-  insTagsQ <- mapM (bind qs.tryInsertTag) upd.tags
-  tagIdsQ <- mapM (bind qs.lookupTagName) upd.tags
+  insTagsQ <- mapM (bind tryInsertTagQ) upd.tags
+  tagIdsQ <- mapM (bind lookupTagQ) upd.tags
   d1 <- getBinding "D1"
   tagIds <-
     V.toList
@@ -178,7 +181,7 @@ putArticle user slug upd = protectIfConfigured user do
 
   updQ <- mkArticleUpdateBody >>= \q -> bind q art upd
   delTagQ <- mkDeleteAllTagsOnArticle >>= \q -> bind q art
-  insTagQ <- mapM (bind qs.tagArticle art) tagIds
+  insTagQ <- mapM (bind tagArticleQ art) tagIds
   resl <-
     liftIO $
       wait
@@ -189,8 +192,8 @@ putArticle user slug upd = protectIfConfigured user do
 
 deleteArticle :: AuthResult User -> T.Text -> Handler HumblrEnv NoContent
 deleteArticle user slug = protectIfConfigured user do
-  qs <- getPresetQueries
-  met <- liftIO . (wait <=< D1.first) =<< bind qs.lookupFromSlug slug
+  lookupFromSlug <- mkLookupSlugQ
+  met <- liftIO . (wait <=< D1.first) =<< bind lookupFromSlug slug
   let martId = either (const Nothing) (Just . (.id)) . D1.parseD1RowView @ArticleRow =<< met
   case martId of
     Nothing -> serverError err404 {errBody = "Article not found"}
@@ -204,8 +207,7 @@ deleteArticle user slug = protectIfConfigured user do
 
 postArticle :: AuthResult User -> ArticleSeed -> App NoContent
 postArticle user art = protectIfConfigured user do
-  qs <- getPresetQueries
-  tryAny (createArticle qs art) >>= \case
+  tryAny (createArticle art) >>= \case
     Left e ->
       serverError err409 {errBody = "Failed to create article: " <> LTE.encodeUtf8 (LT.pack $ displayException e)}
     Right () -> pure NoContent
@@ -228,25 +230,21 @@ getArticle slug = do
       , onlyOk = True
       , includeQuery = True
       }
-  qs <- getPresetQueries
   maybe
     ( serverError
         err404 {errBody = "Article Not Found: " <> LBS.fromStrict (TE.encodeUtf8 slug)}
     )
     pure
-    =<< lookupSlug qs slug
+    =<< lookupSlug slug
 
 listTagArticles :: T.Text -> Maybe Word -> App [Article]
 listTagArticles tag mpage = do
-  qs <- getPresetQueries
-  getArticlesWithTag qs tag $ fromIntegral <$> mpage
+  getArticlesWithTag tag $ fromIntegral <$> mpage
 
 listArticles ::
   Maybe Word ->
   App [Article]
-listArticles mpage = do
-  qs <- getPresetQueries
-  getRecentArticles qs $ fromIntegral <$> mpage
+listArticles mpage = getRecentArticles $ fromIntegral <$> mpage
 
 newtype TagId = TagId {tagId :: Word32}
   deriving (Show, Eq, Ord, Generic)
@@ -283,29 +281,6 @@ newtype Preparation params = Preparation (params ~> App D1.Statement)
 bind :: forall params. Preparation params -> params ~> App D1.Statement
 bind (Preparation f) = f
 
-data PresetQueries = PresetQueries
-  { tryInsertTag :: !(Preparation '[T.Text])
-  , lookupTagName :: !(Preparation '[T.Text])
-  , articleTags :: !(Preparation '[ArticleId])
-  , insertArticle :: !(Preparation '[ArticleSeed])
-  , tagArticle :: !(Preparation '[ArticleId, TagId])
-  , articleWithTags :: !(Preparation '[T.Text, Word32])
-  , lookupFromSlug :: !(Preparation '[T.Text])
-  , recentArticles :: !(Preparation '[Word32])
-  }
-
-getPresetQueries :: App PresetQueries
-getPresetQueries = do
-  tryInsertTag <- mkTryInsertTagQ
-  lookupTagName <- mkLookupTagNameQ
-  articleTags <- mkArticleTagsQ
-  insertArticle <- mkInsertArticleQ
-  tagArticle <- mkTagArticleQ
-  articleWithTags <- mkArticleWithTagsQ
-  lookupFromSlug <- mkLookupSlugQ
-  recentArticles <- mkRecentArticlesQ
-  pure PresetQueries {..}
-
 listAllTags :: App [T.Text]
 listAllTags = do
   qry <- prepare "SELECT * FROM tags"
@@ -318,20 +293,20 @@ listAllTags = do
     $ V.toList tags.results
 
 getRecentArticles ::
-  PresetQueries ->
   Maybe Word32 ->
   App [Article]
-getRecentArticles qs page = do
+getRecentArticles page = do
+  recents <- mkRecentArticlesQ
   rows <-
     liftIO . (wait <=< D1.all)
-      =<< bind qs.recentArticles (maybe 0 (* 10) page)
+      =<< bind recents (maybe 0 (* 10) page)
   unless rows.success $
     throwString "Failed to fetch recent articles"
   let (fails, articles) = partitionEithers $ map D1.parseD1RowView $ V.toList rows.results
   unless (null fails) $
     throwString $
       "Failed to parse article row: " <> show fails
-  mapM (fromArticleRow qs) articles
+  mapM fromArticleRow articles
 
 mkRecentArticlesQ :: App (Preparation '[Word32])
 mkRecentArticlesQ = do
@@ -361,12 +336,13 @@ mkArticleUpdateBody = do
             , D1.toD1ValueView aid
             ]
 
-lookupSlug :: PresetQueries -> T.Text -> App (Maybe Article)
-lookupSlug qs slug = do
-  mrow <- liftIO . (wait <=< D1.first) =<< bind qs.lookupFromSlug slug
+lookupSlug :: T.Text -> App (Maybe Article)
+lookupSlug slug = do
+  lookupQ <- mkLookupSlugQ
+  mrow <- liftIO . (wait <=< D1.first) =<< bind lookupQ slug
   forM mrow $ \row -> do
     case D1.parseD1RowView row of
-      Right r -> fromArticleRow qs r
+      Right r -> fromArticleRow r
       Left err -> throwString err
 
 prepare :: String -> App D1.PreparedStatement
@@ -392,11 +368,15 @@ mkArticleTagsQ =
     Preparation \aid ->
       liftIO $ D1.bind prep (V.singleton $ D1.toD1ValueView aid)
 
-createArticle :: PresetQueries -> ArticleSeed -> App ()
-createArticle qs ArticleSeed {..} = do
-  tagQs <- mapM (bind qs.tryInsertTag) tags
-  newArt <- bind qs.insertArticle ArticleSeed {..}
-  tagIdsQ <- mapM (bind qs.lookupTagName) tags
+createArticle :: ArticleSeed -> App ()
+createArticle ArticleSeed {..} = do
+  tryInsertQ <- mkTryInsertTagQ
+  insertArtQ <- mkInsertArticleQ
+  lookupTagQ <- mkLookupTagNameQ
+  tagArtQ <- mkTagArticleQ
+  tagQs <- mapM (bind tryInsertQ) tags
+  newArt <- bind insertArtQ ArticleSeed {..}
+  tagIdsQ <- mapM (bind lookupTagQ) tags
   artIdQ <-
     prepare "SELECT id FROM articles WHERE slug = ?" >>= \q ->
       liftIO (D1.bind q $ V.singleton $ D1.toD1ValueView slug)
@@ -415,7 +395,7 @@ createArticle qs ArticleSeed {..} = do
         either (error "Failed to parse article") (.id) $
           D1.parseD1RowView @ArticleRow $
             V.head rawArtId.results
-  void $ mapM (bind qs.tagArticle artId) tagIds
+  void $ mapM (bind tagArtQ artId) tagIds
 
 mkInsertArticleQ :: App (Preparation '[ArticleSeed])
 mkInsertArticleQ =
@@ -464,11 +444,12 @@ mkDeleteArticle = do
       Preparation \aid ->
         liftIO $ D1.bind prep (V.singleton $ D1.toD1ValueView aid)
 
-getArticlesWithTag :: PresetQueries -> T.Text -> Maybe Word32 -> App [Article]
-getArticlesWithTag qs tag mpage = do
+getArticlesWithTag :: T.Text -> Maybe Word32 -> App [Article]
+getArticlesWithTag tag mpage = do
+  artsWithTagQ <- mkArticleWithTagsQ
   rows <-
     liftIO . (wait <=< D1.all)
-      =<< bind qs.articleWithTags tag (fromMaybe 0 mpage)
+      =<< bind artsWithTagQ tag (fromMaybe 0 mpage)
   unless rows.success $
     throwString "Failed to fetch articles with tag"
 
@@ -476,7 +457,7 @@ getArticlesWithTag qs tag mpage = do
   unless (null fails) $
     throwString $
       "Failed to parse article row: " <> show fails
-  mapM (fromArticleRow qs) articles
+  mapM fromArticleRow articles
 
 data AppException = AppException !T.Text
   deriving (Show, Eq, Ord, Generic)
@@ -490,11 +471,11 @@ getTagName :: TagName -> T.Text
 getTagName = coerce
 
 fromArticleRow ::
-  PresetQueries ->
   ArticleRow ->
   App Article
-fromArticleRow qs arow = do
-  rows <- liftIO . (wait <=< D1.all) =<< bind qs.articleTags arow.id
+fromArticleRow arow = do
+  artTagsQ <- mkArticleTagsQ
+  rows <- liftIO . (wait <=< D1.all) =<< bind artTagsQ arow.id
   unless rows.success $
     throwString "Failed to fetch tags for article"
   let (fails, tags) = partitionEithers $ map (fmap getTagName . D1.parseD1RowView) $ V.toList rows.results
