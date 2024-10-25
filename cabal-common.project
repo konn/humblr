@@ -50,7 +50,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/konn/servant-cloudflare-workers
-  tag: aca317f201320af830a1a4660db9b2129528b4a5
+  tag: 61d2fb376da718b87a3aa010038d8eb91c9752b0
   subdir:
     servant-cloudflare-workers
     servant-cloudflare-workers-effectful
