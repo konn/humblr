@@ -22,6 +22,7 @@ module Humblr.Frontend.View (viewModel) where
 
 import Data.Foldable (toList)
 import Data.Generics.Labels ()
+import Data.Maybe (fromMaybe)
 import Data.String (fromString)
 import Data.Time (defaultTimeLocale, formatTime)
 import Humblr.CMark qualified as CM
@@ -45,7 +46,7 @@ mainView m = case m.mode of
     [ div_ [class_ "content"] [progress_ [class_ "progress is-large"] ["Loading..."]]
     ]
   TopPage topPage -> topPageView topPage
-  ArticlePage art -> []
+  ArticlePage art -> articleView art
   EditingArticle art seed -> []
   CreatingArticle slug edition -> []
   TagArticles tag cur arts -> []
@@ -53,6 +54,24 @@ mainView m = case m.mode of
     [ h2_ [class_ "title"] [text title]
     , p_ [class_ "content"] [text message]
     ]
+
+articleView :: Article -> [View Action]
+articleView Article {..} =
+  let linkToArticle = a_ [onClick $ openArticle slug]
+   in [ div_
+          [class_ "box is-four-fifth"]
+          [ div_
+              [class_ "content is-size-3"]
+              [rawHtml $ CM.commonmarkToHtml [] body]
+          , nav_
+              [class_ "level"]
+              [ div_ [class_ "level-left"] []
+              , div_
+                  [class_ "level-right"]
+                  [linkToArticle [small_ [] [text "Posted ", fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" createdAt]]]
+              ]
+          ]
+      ]
 
 topPageView :: TopPage -> [View Action]
 topPageView MkTopPage {..} =
@@ -78,6 +97,7 @@ topPageView MkTopPage {..} =
 articleOverview :: Article -> View Action
 articleOverview Article {..} =
   let linkToArticle = a_ [onClick $ openArticle slug]
+      nodes = CM.commonmarkToNode [] body
    in div_
         [class_ "box theme-light"]
         [ article_
@@ -85,8 +105,8 @@ articleOverview Article {..} =
             [ div_
                 [class_ "media-content"]
                 [ div_
-                    [class_ "content"]
-                    [ p_ [] [linkToArticle [rawHtml $ CM.commonmarkToHtml [] body]]
+                    [class_ "content is-size-3"]
+                    [ p_ [] [linkToArticle [text $ CM.nodeToPlainText $ fromMaybe nodes $ CM.getSummary nodes]]
                     ]
                 , nav_
                     [class_ "level"]
