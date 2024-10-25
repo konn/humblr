@@ -39,6 +39,7 @@ module Humblr.Frontend.Types (
   api,
   module Humblr.Types,
   adminAPI,
+  newTagInputId,
 ) where
 
 import Control.Lens
@@ -135,8 +136,6 @@ data Action
   | DeleteEditingTag !MisoString
   | AddEditingTag
   | SetNewTagName !MisoString
-  | EditArticleStartComposingTag
-  | EditArticleFinishComposingTag
   | SaveEditingArticle
   | OpenTagArticles !T.Text !(Maybe Word)
   | ShowTagArticles !T.Text !Word ![Article]
@@ -167,3 +166,6 @@ callApi act = do
       <&> #uriFragment .~ ""
   baseUrl <- parseBaseUrl $ show uri
   runFetch baseUrl act
+
+newTagInputId :: MisoString
+newTagInputId = "new-tag-input"

@@ -33,6 +33,8 @@ import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
 import Data.Text qualified as T
 import Humblr.Frontend.Types
+import Language.Javascript.JSaddle (setProp, val)
+import Language.Javascript.JSaddle.Object (Object (..))
 import Miso
 import Miso.String (ToMisoString (toMisoString))
 import Miso.String qualified as MisoString
@@ -86,17 +88,18 @@ updateModel (SetEditingArticleContent f) m =
   noEff $ m & #mode . #_EditingArticle . #edition . #body .~ f
 updateModel (DeleteEditingTag f) m =
   noEff $ m & #mode . #_EditingArticle . #edition . #tags %~ L.delete f
-updateModel EditArticleStartComposingTag m =
-  noEff $ m & #mode . #_EditingArticle . #edition . #composingTag .~ True
-updateModel EditArticleFinishComposingTag m =
-  noEff $ m & #mode . #_EditingArticle . #edition . #composingTag .~ False
 updateModel AddEditingTag m =
-  noEff $
-    m
-      & #mode . #_EditingArticle . #edition %~ \e ->
-        if MisoString.null e.newTag
-          then e
-          else e {tags = e.tags ++ [e.newTag], newTag = ""}
+  let m' =
+        m
+          & #mode . #_EditingArticle . #edition %~ \e ->
+            if MisoString.null e.newTag
+              then e
+              else e {tags = e.tags ++ [e.newTag], newTag = ""}
+   in m' <# do
+        field <- getElementById newTagInputId
+        emp <- val ("" :: T.Text)
+        setProp "value" emp $ Object field
+        pure NoOp
 updateModel SaveEditingArticle m =
   m {mode = Idle}
     `batchEff` [ do
@@ -118,10 +121,8 @@ updateModel SaveEditingArticle m =
                     Right NoContent -> pure $ openArticle original.slug
                | EditedArticle {..} <- m ^.. #mode . #_EditingArticle
                ]
-updateModel (SetNewTagName f) m
-  | maybe False not (m.mode ^? #_EditingArticle . #edition . #composingTag) =
-      noEff $ m & #mode . #_EditingArticle . #edition . #newTag .~ f
-  | otherwise = noEff m
+updateModel (SetNewTagName f) m =
+  noEff $ m & #mode . #_EditingArticle . #edition . #newTag .~ f
 updateModel NewArticle m =
   noEff
     m
