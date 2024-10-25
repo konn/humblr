@@ -113,6 +113,7 @@ updateModel AddEditingTag m
       let m' =
             m
               & #mode . tagsT |>~ m ^. #mode . newTagT
+              & #mode . newTagT .~ ""
        in m' <# do
             field <- getElementById newTagInputId
             emp <- val ("" :: T.Text)
