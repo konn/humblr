@@ -18,6 +18,7 @@ module Humblr.Types (
   rootApiLinks,
   rootApiURIs,
   RootAPI (..),
+  RestApi (..),
   AdminAPI (..),
   FrontendRoutes (..),
   RequireUser,
@@ -45,7 +46,7 @@ rootApiURIs :: RootAPI (AsLink URI)
 rootApiURIs = allFieldLinks' linkURI
 
 data RootAPI mode = RootAPI
-  { apiRoutes :: mode :- "api" :> NamedRoutes AdminAPI
+  { apiRoutes :: mode :- "api" :> NamedRoutes RestApi
   , frontend :: mode :- NamedRoutes FrontendRoutes
   , assets :: mode :- "assets" :> Raw
   , resources :: mode :- "resources" :> Raw
@@ -75,20 +76,23 @@ eitherResult :: J.Result a -> Either T.Text a
 eitherResult (J.Success a) = Right a
 eitherResult (J.Error e) = Left $ T.pack e
 
-data AdminAPI mode = AdminAPI
+data RestApi mode = RestApi
   { listArticles ::
       mode :- "articles" :> QueryParam "page" Word :> Get '[JSON] [Article]
   , getArticle ::
       mode :- "articles" :> Capture "slug" T.Text :> Get '[JSON] Article
-  , -- , headArticle ::
-    --     mode :- "articles" :> Capture "slug" T.Text :> Verb HEAD 200 '[PlainText] NoContent
-    postArticle ::
-      mode :- "articles" :> RequireUser :> ReqBody '[JSON] ArticleSeed :> Post '[JSON] NoContent
-  , putArticle ::
-      mode :- "articles" :> RequireUser :> Capture "slug" T.Text :> ReqBody '[JSON] ArticleUpdate :> Put '[JSON] NoContent
-  , deleteArticle ::
-      mode :- "articles" :> RequireUser :> Capture "slug" T.Text :> Delete '[JSON] NoContent
   , listTagArticles :: mode :- "tags" :> Capture "tag" T.Text :> QueryParam "page" Word :> Get '[JSON] [Article]
+  , adminAPI :: mode :- "admin" :> RequireUser :> NamedRoutes AdminAPI
+  }
+  deriving (Generic)
+
+data AdminAPI mode = AdminAPI
+  { postArticle ::
+      mode :- "articles" :> ReqBody '[JSON] ArticleSeed :> Post '[JSON] NoContent
+  , putArticle ::
+      mode :- "articles" :> Capture "slug" T.Text :> ReqBody '[JSON] ArticleUpdate :> Put '[JSON] NoContent
+  , deleteArticle ::
+      mode :- "articles" :> Capture "slug" T.Text :> Delete '[JSON] NoContent
   }
   deriving (Generic)
 

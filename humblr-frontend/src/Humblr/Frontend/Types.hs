@@ -93,7 +93,7 @@ data Action
   | ShowErrorPage !MisoString !MisoString
   deriving (Show, Generic)
 
-api :: AdminAPI (AsClientT (FetchT JSM))
+api :: RestApi (AsClientT (FetchT JSM))
 api = genericClient
 
 type AsRoute :: Type -> Type

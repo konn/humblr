@@ -141,15 +141,21 @@ protectIfConfigured auth act = do
       _ -> serverError err403 {errBody = "Unauthorised"}
 
 apiRoutes ::
-  AdminAPI (AsWorker HumblrEnv)
+  RestApi (AsWorker HumblrEnv)
 apiRoutes =
-  AdminAPI
-    { putArticle = putArticle
-    , postArticle = postArticle
-    , listTagArticles = listTagArticles
+  RestApi
+    { listTagArticles = listTagArticles
     , listArticles = listArticles
     , getArticle = getArticle
-    , deleteArticle = deleteArticle
+    , adminAPI
+    }
+
+adminAPI :: AuthResult User -> AdminAPI (AsWorker HumblrEnv)
+adminAPI usr =
+  AdminAPI
+    { putArticle = putArticle usr
+    , postArticle = postArticle usr
+    , deleteArticle = deleteArticle usr
     }
 
 putArticle :: AuthResult User -> T.Text -> ArticleUpdate -> Handler HumblrEnv NoContent
