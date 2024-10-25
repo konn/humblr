@@ -28,6 +28,7 @@ module Humblr.Frontend.Actions (
 import Control.Exception.Safe (Exception (..), tryAny)
 import Control.Lens
 import Data.Generics.Labels ()
+import Data.List qualified as L
 import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
 import Data.Text qualified as T
@@ -36,7 +37,7 @@ import Miso
 import Miso.String (ToMisoString (toMisoString))
 import Network.HTTP.Types (status404)
 import Servant.API
-import Servant.Auth.Client ()
+import Servant.Auth.Client (Token (CloudflareToken))
 import Servant.Client.FetchAPI
 
 updateModel :: Action -> Model -> Effect Action Model
@@ -49,7 +50,7 @@ updateModel (OpenTopPage mcur) m =
   m <# do
     eith <- tryAny $ callApi (api.listArticles mcur)
     case eith of
-      Left err -> pure $ ReportError $ toMisoString $ displayException err
+      Left err -> pure $ ReportError (toMisoString $ displayException err) Nothing
       Right articles -> pure $ ShowTopPage MkTopPage {page = fromMaybe 0 mcur, ..}
 updateModel (ShowTopPage topPage) m = noEff m {mode = TopPage topPage}
 updateModel (OpenArticle slug) m =
@@ -70,29 +71,57 @@ updateModel (ShowEditArticle article) m =
       }
 updateModel (SwitchEditViewState st) m =
   noEff $ m & #mode . #_EditingArticle . #viewState .~ st
+updateModel (SetEditingArticleContent f) m =
+  noEff $ m & #mode . #_EditingArticle . #edition . #body .~ f
+updateModel (DeleteEditingTag f) m =
+  noEff $ m & #mode . #_EditingArticle . #edition . #tags %~ L.delete f
+updateModel (AddEditingTag f) m =
+  noEff $ m & #mode . #_EditingArticle . #edition . #tags %~ L.nub . (f :)
+updateModel SaveEditingArticle m =
+  m {mode = Idle}
+    `batchEff` [ do
+                  eith <-
+                    tryAny $
+                      callApi $
+                        (api.adminAPI (CloudflareToken Nothing)).putArticle
+                          original.slug
+                          edition
+                  case eith of
+                    Left err ->
+                      pure $
+                        ReportError
+                          (toMisoString $ displayException err)
+                          (Just m.mode)
+                    Right NoContent -> pure $ openArticle original.slug
+               | EditedArticle {..} <- m ^.. #mode . #_EditingArticle
+               ]
 updateModel NewArticle m =
   noEff
     m
       { mode =
           CreatingArticle
             ""
-            ArticleEdition {body = mempty, tags = mempty}
+            ArticleUpdate {body = mempty, tags = mempty}
       }
 updateModel (OpenTagArticles tag mcur) m =
   m <# do
     eith <- tryAny $ callApi (api.listTagArticles tag mcur)
     case eith of
-      Left err -> pure $ ReportError $ toMisoString $ displayException err
+      Left err -> pure $ ReportError (toMisoString $ displayException err) Nothing
       Right arts -> pure $ ShowTagArticles tag (fromMaybe 0 mcur) arts
 updateModel (ShowTagArticles tag cur arts) m =
   noEff m {mode = TagArticles tag cur arts}
-updateModel (ReportError msg) m = noEff m {errorMessage = Just msg}
+updateModel (ReportError msg mstate) m =
+  noEff $
+    m
+      & #errorMessage ?~ msg
+      & #mode %~ maybe id const mstate
 updateModel DissmissError m = noEff m {errorMessage = Nothing}
 updateModel (ShowErrorPage title message) m =
   noEff m {mode = ErrorPage MkErrorPage {..}}
 
-toArticleSeed :: Article -> ArticleEdition
-toArticleSeed art = ArticleEdition {body = toMisoString art.body, tags = art.tags}
+toArticleSeed :: Article -> ArticleUpdate
+toArticleSeed art = ArticleUpdate {body = toMisoString art.body, tags = art.tags}
 
 withArticleSlug :: T.Text -> (Article -> JSM Action) -> JSM Action
 withArticleSlug slug k = do

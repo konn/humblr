@@ -111,7 +111,7 @@ data AdminAPI mode = AdminAPI
   deriving (Generic)
 
 data ArticleUpdate = ArticleUpdate {body :: T.Text, tags :: [T.Text]}
-  deriving stock (Generic, Show)
+  deriving stock (Generic, Show, Eq)
   deriving anyclass (FromJSON, ToJSON)
 
 data FrontendRoutes mode = FrontendRoutes

@@ -46,7 +46,7 @@ mainView m = case m.mode of
     [ div_ [class_ "content"] [progress_ [class_ "progress is-large"] ["Loading..."]]
     ]
   TopPage topPage -> topPageView topPage
-  ArticlePage art -> articleView art
+  ArticlePage art -> articleView FrontEndArticle art
   EditingArticle edit -> editView edit
   CreatingArticle slug edition -> []
   TagArticles tag cur arts -> []
@@ -56,7 +56,7 @@ mainView m = case m.mode of
     ]
 
 editView :: EditedArticle -> [View Action]
-editView EditedArticle {..} =
+editView ea@EditedArticle {..} =
   [ h2_ [class_ "title"] [text "Editing ", code_ [] [text original.slug]]
   , div_
       [class_ "content"]
@@ -76,16 +76,83 @@ editView EditedArticle {..} =
                         else ([], [onClick $ SwitchEditViewState mode])
               ]
           ]
+      , div_
+          [class_ "box"]
+          $ editMainView viewState ea
       ]
+  ]
+
+data ArticleViewMode = PreviewArticle | FrontEndArticle
+  deriving (Show, Eq)
+
+editMainView :: EditViewState -> EditedArticle -> [View Action]
+editMainView Edit art =
+  [ div_
+      [class_ "field"]
+      [ div_
+          [class_ "control"]
+          [ textarea_
+              [ class_ "textarea is-large"
+              , rows_ "5"
+              , onInput SetEditingArticleContent
+              ]
+              [text art.edition.body]
+          ]
+      ]
+  , div_
+      [class_ "field"]
+      [ label_ [class_ "label"] ["Tags"]
+      , div_
+          [class_ "control has-icons-left"]
+          [ input_ [class_ "input"]
+          , iconLeft "sell"
+          ]
+      ]
+  ]
+editMainView Preview art =
+  [ div_ [class_ "content"] $
+      articleView
+        FrontEndArticle
+        Article
+          { updatedAt = art.original.updatedAt
+          , tags = art.edition.tags
+          , slug = art.original.slug
+          , createdAt = art.original.createdAt
+          , body = art.edition.body
+          }
   ]
 
 toEditIcon :: EditViewState -> View Action
 toEditIcon Edit = icon "edit"
 toEditIcon Preview = icon "play_circle"
 
-articleView :: Article -> [View Action]
-articleView Article {..} =
-  let linkToArticle = a_ [onClick $ openArticle slug]
+articleView :: ArticleViewMode -> Article -> [View Action]
+articleView mode Article {..} =
+  let linkToArticle =
+        case mode of
+          FrontEndArticle -> a_ [onClick $ openArticle slug]
+          PreviewArticle -> a_ []
+      tagsView = case mode of
+        FrontEndArticle ->
+          div_
+            [class_ "tags"]
+            [span_ [class_ "tag"] [linkToTag tag [text tag] | tag <- tags]]
+        PreviewArticle ->
+          div_ [class_ "field is-grouped is-grouped-multiline"] $
+            [ div_
+                [class_ "control"]
+                [ div_
+                    [class_ "tags has-addons"]
+                    [ a_ [class_ "tag"] [text tag]
+                    , a_
+                        [ class_ "tag is-delete"
+                        , onClick $ DeleteEditingTag tag
+                        ]
+                        []
+                    ]
+                ]
+            | tag <- tags
+            ]
    in [ div_
           [class_ "box is-four-fifth"]
           [ div_
@@ -95,9 +162,7 @@ articleView Article {..} =
               [class_ "level"]
               [ div_
                   [class_ "level-left"]
-                  [ div_
-                      [class_ "tags are-normal"]
-                      [span_ [class_ "tag"] [linkToTag tag [text tag]] | tag <- tags]
+                  [ tagsView
                   ]
               , div_
                   [class_ "level-right"]
@@ -107,8 +172,7 @@ articleView Article {..} =
       ]
 
 linkToTag :: MisoString -> [View Action] -> View Action
-linkToTag tag =
-  a_ [onClick $ openTagArticles tag Nothing]
+linkToTag tag = a_ [onClick $ openTagArticles tag Nothing]
 
 topPageView :: TopPage -> [View Action]
 topPageView MkTopPage {..} =
@@ -200,6 +264,16 @@ icon :: MisoString -> View a
 icon name =
   span_
     [class_ "icon"]
+    [ span_
+        [ class_ "material-symbols-outlined"
+        ]
+        [text name]
+    ]
+
+iconLeft :: MisoString -> View a
+iconLeft name =
+  span_
+    [class_ "icon is-left"]
     [ span_
         [ class_ "material-symbols-outlined"
         ]
