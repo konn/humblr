@@ -118,7 +118,7 @@ frontend =
     }
 
 serveIndex :: Worker HumblrEnv Raw
-serveIndex = serveCachedRaw assetCacheOptions $ Tagged \req env _ ->
+serveIndex = Tagged \req env _ ->
   if not $ null req.pathInfo
     then toWorkerResponse $ responseServerError err404 {errBody = "Not Found"}
     else do
