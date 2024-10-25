@@ -24,6 +24,7 @@ module Humblr.Frontend.Types (
   Mode (..),
   TopPage (..),
   ErrorPage (..),
+  ErrorMessage (..),
   EditedArticle (..),
   EditViewState (..),
   Action (..),
@@ -50,6 +51,9 @@ import Servant.Client.Generic (genericClient)
 
 initialModel :: Model
 initialModel = Model {mode = Idle, errorMessage = Nothing}
+
+data ErrorMessage = MkErrorMessage {title, message :: MisoString}
+  deriving (Show, Eq, Generic)
 
 data PageOptions = PageOptions
   { title :: !T.Text
@@ -87,7 +91,7 @@ data ErrorPage = MkErrorPage
   }
   deriving (Show, Generic, Eq)
 
-data Model = Model {mode :: !Mode, errorMessage :: !(Maybe T.Text)}
+data Model = Model {mode :: !Mode, errorMessage :: !(Maybe ErrorMessage)}
   deriving (Show, Generic, Eq)
 
 {- Note [Naming convention]
@@ -113,8 +117,8 @@ data Action
   | SaveEditingArticle
   | OpenTagArticles !T.Text !(Maybe Word)
   | ShowTagArticles !T.Text !Word ![Article]
-  | ReportError !MisoString !(Maybe Mode)
-  | DissmissError
+  | ShowErrorNotification !ErrorMessage !(Maybe Mode)
+  | DismissError
   | ShowErrorPage !MisoString !MisoString
   deriving (Show, Generic)
 

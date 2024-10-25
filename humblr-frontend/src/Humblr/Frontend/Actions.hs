@@ -50,7 +50,14 @@ updateModel (OpenTopPage mcur) m =
   m <# do
     eith <- tryAny $ callApi (api.listArticles mcur)
     case eith of
-      Left err -> pure $ ReportError (toMisoString $ displayException err) Nothing
+      Left err ->
+        pure $
+          ShowErrorNotification
+            MkErrorMessage
+              { title = "Could not Retrieve Articles!"
+              , message = toMisoString $ displayException err
+              }
+            Nothing
       Right articles -> pure $ ShowTopPage MkTopPage {page = fromMaybe 0 mcur, ..}
 updateModel (ShowTopPage topPage) m = noEff m {mode = TopPage topPage}
 updateModel (OpenArticle slug) m =
@@ -89,8 +96,11 @@ updateModel SaveEditingArticle m =
                   case eith of
                     Left err ->
                       pure $
-                        ReportError
-                          (toMisoString $ displayException err)
+                        ShowErrorNotification
+                          MkErrorMessage
+                            { title = "Could not save article " <> original.slug
+                            , message = toMisoString $ displayException err
+                            }
                           (Just m.mode)
                     Right NoContent -> pure $ openArticle original.slug
                | EditedArticle {..} <- m ^.. #mode . #_EditingArticle
@@ -107,16 +117,23 @@ updateModel (OpenTagArticles tag mcur) m =
   m <# do
     eith <- tryAny $ callApi (api.listTagArticles tag mcur)
     case eith of
-      Left err -> pure $ ReportError (toMisoString $ displayException err) Nothing
+      Left err ->
+        pure $
+          ShowErrorNotification
+            MkErrorMessage
+              { title = "Tag Not Found"
+              , message = "Tag retrieve failed: " <> toMisoString (displayException err)
+              }
+            Nothing
       Right arts -> pure $ ShowTagArticles tag (fromMaybe 0 mcur) arts
 updateModel (ShowTagArticles tag cur arts) m =
   noEff m {mode = TagArticles tag cur arts}
-updateModel (ReportError msg mstate) m =
+updateModel (ShowErrorNotification msg mstate) m =
   noEff $
     m
       & #errorMessage ?~ msg
       & #mode %~ maybe id const mstate
-updateModel DissmissError m = noEff m {errorMessage = Nothing}
+updateModel DismissError m = noEff m {errorMessage = Nothing}
 updateModel (ShowErrorPage title message) m =
   noEff m {mode = ErrorPage MkErrorPage {..}}
 

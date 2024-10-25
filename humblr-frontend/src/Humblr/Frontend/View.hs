@@ -22,7 +22,7 @@ module Humblr.Frontend.View (viewModel) where
 
 import Data.Foldable (toList)
 import Data.Generics.Labels ()
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, maybeToList)
 import Data.String (fromString)
 import Data.Time (defaultTimeLocale, formatTime)
 import Humblr.CMark qualified as CM
@@ -38,6 +38,14 @@ viewModel m@Model {..} =
     [class_ "section"]
     $ headerView m
       : mainView m
+      ++ [ div_
+            [class_ "notification is-danger"]
+            [ button_ [class_ "delete", onClick DismissError] []
+            , h3_ [class_ "subtitle"] [text title]
+            , text message
+            ]
+         | MkErrorMessage {..} <- maybeToList errorMessage
+         ]
       ++ [footerView]
 
 mainView :: Model -> [View Action]
@@ -112,7 +120,7 @@ editMainView Edit art =
 editMainView Preview art =
   [ div_ [class_ "content"] $
       articleView
-        FrontEndArticle
+        PreviewArticle
         Article
           { updatedAt = art.original.updatedAt
           , tags = art.edition.tags
