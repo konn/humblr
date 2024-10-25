@@ -24,6 +24,8 @@ module Humblr.Frontend.Types (
   Mode (..),
   TopPage (..),
   ErrorPage (..),
+  EditedArticle (..),
+  EditViewState (..),
   Action (..),
   ArticleSeed (..),
   ArticleEdition (..),
@@ -63,12 +65,22 @@ data ArticleEdition = ArticleEdition {body :: !MisoString, tags :: ![T.Text]}
 data Mode
   = TopPage !TopPage
   | ArticlePage !Article
-  | EditingArticle !Article !ArticleEdition
+  | EditingArticle !EditedArticle
   | CreatingArticle !T.Text !ArticleEdition
   | TagArticles !T.Text !Word ![Article]
   | ErrorPage !ErrorPage
   | Idle
   deriving (Show, Generic, Eq)
+
+data EditedArticle = EditedArticle
+  { original :: !Article
+  , edition :: !ArticleEdition
+  , viewState :: !EditViewState
+  }
+  deriving (Show, Eq, Generic)
+
+data EditViewState = Edit | Preview
+  deriving (Show, Eq, Generic)
 
 data TopPage = MkTopPage {page :: !Word, articles :: ![Article]}
   deriving (Show, Generic, Eq)
@@ -98,6 +110,7 @@ data Action
   | NewArticle
   | OpenEditArticle !T.Text
   | ShowEditArticle !Article
+  | SwitchEditViewState !EditViewState
   | OpenTagArticles !T.Text !(Maybe Word)
   | ShowTagArticles !T.Text !Word ![Article]
   | ReportError !MisoString

@@ -22,9 +22,11 @@ module Humblr.Frontend.Actions (
   openEndpoint,
   openTopPage,
   openArticle,
+  openTagArticles,
 ) where
 
 import Control.Exception.Safe (Exception (..), tryAny)
+import Control.Lens
 import Data.Generics.Labels ()
 import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
@@ -56,7 +58,18 @@ updateModel (ShowArticle article) m = noEff m {mode = ArticlePage article}
 updateModel (OpenEditArticle slug) m =
   m <# withArticleSlug slug (pure . ShowEditArticle)
 updateModel (ShowEditArticle article) m =
-  noEff m {mode = EditingArticle article (toArticleSeed article)}
+  noEff
+    m
+      { mode =
+          EditingArticle
+            EditedArticle
+              { original = article
+              , edition = toArticleSeed article
+              , viewState = Edit
+              }
+      }
+updateModel (SwitchEditViewState st) m =
+  noEff $ m & #mode . #_EditingArticle . #viewState .~ st
 updateModel NewArticle m =
   noEff
     m
@@ -123,6 +136,9 @@ openTopPage = openEndpoint . rootApiURIs.frontend.topPage
 
 openArticle :: T.Text -> Action
 openArticle = openEndpoint . rootApiURIs.frontend.articlePage
+
+openTagArticles :: T.Text -> Maybe Word -> Action
+openTagArticles tag = openEndpoint . rootApiURIs.frontend.tagArticles tag
 
 openEndpoint :: URI -> Action
 openEndpoint = ChangeUrl

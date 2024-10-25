@@ -29,7 +29,7 @@ import Humblr.CMark qualified as CM
 import Humblr.Frontend.Actions
 import Humblr.Frontend.Types
 import Miso
-import Miso.String (toMisoString)
+import Miso.String (MisoString, toMisoString)
 import Servant.Auth.Client ()
 
 viewModel :: Model -> View Action
@@ -47,13 +47,41 @@ mainView m = case m.mode of
     ]
   TopPage topPage -> topPageView topPage
   ArticlePage art -> articleView art
-  EditingArticle art seed -> []
+  EditingArticle edit -> editView edit
   CreatingArticle slug edition -> []
   TagArticles tag cur arts -> []
   ErrorPage MkErrorPage {..} ->
     [ h2_ [class_ "title"] [text title]
     , p_ [class_ "content"] [text message]
     ]
+
+editView :: EditedArticle -> [View Action]
+editView EditedArticle {..} =
+  [ h2_ [class_ "title"] [text "Editing ", code_ [] [text original.slug]]
+  , div_
+      [class_ "content"]
+      [ div_
+          [class_ "tabs"]
+          [ ul_
+              []
+              [ li_
+                  attrs
+                  [ a_ linkAtts [toEditIcon mode, text (toMisoString $ show mode)]
+                  ]
+              | mode <- [Edit, Preview]
+              , let isActive = mode == viewState
+                    (attrs, linkAtts) =
+                      if isActive
+                        then ([class_ "is-active"], [])
+                        else ([], [onClick $ SwitchEditViewState mode])
+              ]
+          ]
+      ]
+  ]
+
+toEditIcon :: EditViewState -> View Action
+toEditIcon Edit = icon "edit"
+toEditIcon Preview = icon "play_circle"
 
 articleView :: Article -> [View Action]
 articleView Article {..} =
@@ -65,13 +93,22 @@ articleView Article {..} =
               [rawHtml $ CM.commonmarkToHtml [] body]
           , nav_
               [class_ "level"]
-              [ div_ [class_ "level-left"] []
+              [ div_
+                  [class_ "level-left"]
+                  [ div_
+                      [class_ "tags are-normal"]
+                      [span_ [class_ "tag"] [linkToTag tag [text tag]] | tag <- tags]
+                  ]
               , div_
                   [class_ "level-right"]
                   [linkToArticle [small_ [] [text "Posted ", fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" createdAt]]]
               ]
           ]
       ]
+
+linkToTag :: MisoString -> [View Action] -> View Action
+linkToTag tag =
+  a_ [onClick $ openTagArticles tag Nothing]
 
 topPageView :: TopPage -> [View Action]
 topPageView MkTopPage {..} =
@@ -110,7 +147,12 @@ articleOverview Article {..} =
                     ]
                 , nav_
                     [class_ "level"]
-                    [ div_ [class_ "level-left"] []
+                    [ div_
+                        [class_ "level-left"]
+                        [ div_
+                            [class_ "tags are-normal"]
+                            [span_ [class_ "tag"] [linkToTag tag [text tag]] | tag <- tags]
+                        ]
                     , div_
                         [class_ "level-right"]
                         [linkToArticle [small_ [] [fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" createdAt]]]
@@ -152,6 +194,16 @@ footerView =
             ]
         , p_ [] ["(c) 2024-present Hiromi ISHII"]
         ]
+    ]
+
+icon :: MisoString -> View a
+icon name =
+  span_
+    [class_ "icon"]
+    [ span_
+        [ class_ "material-symbols-outlined"
+        ]
+        [text name]
     ]
 
 {-
