@@ -22,7 +22,7 @@
 
 module Humblr.Frontend.View (viewModel) where
 
-import Control.Lens ((^.))
+import Control.Lens (runLens, (^.))
 import Data.Bool (bool)
 import Data.Char qualified as C
 import Data.Foldable (toList)
@@ -87,48 +87,72 @@ editView ea@EditedArticle {..} =
 
 generalEditView :: forall state. (HasEditView state) => state -> [View Action]
 generalEditView ea =
-  [ div_
-      [class_ "content"]
-      [ div_
-          [class_ "tabs"]
-          [ ul_
-              []
-              [ li_
-                  attrs
-                  [ a_ linkAtts [toEditIcon mode, text (toMisoString $ show mode)]
+  let curSlug = ea ^. slugG
+      isValidArticle =
+        not (MS.null curSlug)
+          && MS.isAscii curSlug
+          && MS.all (\c -> C.isAlphaNum c || c == '-' || c == '_') curSlug
+   in [ div_
+          [class_ "content"]
+          [ div_
+              [class_ "tabs"]
+              [ ul_
+                  []
+                  [ li_
+                      attrs
+                      [ a_ linkAtts [toEditIcon mode, text (toMisoString $ show mode)]
+                      ]
+                  | mode <- [Edit, Preview]
+                  , let isActive = mode == ea ^. viewStateL
+                        (attrs, linkAtts) =
+                          if isActive
+                            then ([class_ "is-active"], [])
+                            else ([], [onClick $ SwitchEditViewState mode])
                   ]
-              | mode <- [Edit, Preview]
-              , let isActive = mode == ea ^. viewStateL
-                    (attrs, linkAtts) =
-                      if isActive
-                        then ([class_ "is-active"], [])
-                        else ([], [onClick $ SwitchEditViewState mode])
               ]
-          ]
-      , div_ [class_ "box"] $
-          editMainView (ea ^. viewStateL) ea
-      , div_
-          [class_ "field is-grouped is-grouped-right"]
-          [ -- TODO: Confirm before cancel
-            div_
-              [class_ "control"]
-              [ button_
-                  [ class_ "button is-light"
-                  , onClick $ openArticle $ ea ^. slugG
+          , div_ [class_ "box"] $
+              [ div_ [class_ "field"] $
+                  [ label_ [class_ "label"] ["Slug"]
+                  , div_
+                      [class_ "control  has-icons-left"]
+                      [ input_
+                          [ class_ "input"
+                          , type_ "input"
+                          , value_ $ ea ^. runLens slgL
+                          , onInput $ SetEditedSlug . MS.strip
+                          ]
+                      , iconLeft "link"
+                      ]
                   ]
-                  ["Cancel"]
+              | DynamicSlug slgL <- [slugMode @state]
               ]
+                <> editMainView (ea ^. viewStateL) ea
           , div_
-              [class_ "control"]
-              [ button_
-                  [ class_ "button is-primary"
-                  , onClick $ saveAction state
+              [class_ "field is-grouped is-grouped-right"]
+              [ -- TODO: Confirm before cancel
+                div_
+                  [class_ "control"]
+                  [ button_
+                      [ class_ "button is-light"
+                      , onClick $ openArticle $ ea ^. slugG
+                      ]
+                      ["Cancel"]
                   ]
-                  ["Submit"]
+              , div_
+                  [class_ "control"]
+                  [ button_
+                      ( if isValidArticle
+                          then
+                            [ class_ "button is-primary"
+                            , onClick $ saveAction state
+                            ]
+                          else [class_ "button is-disabled", disabled_ True]
+                      )
+                      ["Submit"]
+                  ]
               ]
           ]
       ]
-  ]
 
 data ArticleViewMode = PreviewArticle | FrontEndArticle
   deriving (Show, Eq)
@@ -137,7 +161,9 @@ editMainView :: (HasEditView ea) => EditViewState -> ea -> [View Action]
 editMainView Edit art =
   let newTag = MS.strip $ art ^. newTagL
       validTagName =
-        not (MS.null newTag) && MS.all (not . C.isSpace) newTag
+        not (MS.null newTag)
+          && MS.all (not . C.isSpace) newTag
+          && not (MS.null $ art ^. bodyL)
    in [ div_
           [class_ "field"]
           [ div_
@@ -153,8 +179,15 @@ editMainView Edit art =
       , let btnCls =
               class_ $
                 MS.unwords $
-                  "button" : if validTagName then ["is-link"] else ["is-link is-light is-static"]
-            btnAttrs = btnCls : [onClick AddEditingTag | validTagName]
+                  "button"
+                    : if validTagName
+                      then ["is-link"]
+                      else ["is-link is-light is-disabled"]
+            btnAction =
+              if validTagName
+                then onClick AddEditingTag
+                else disabled_ True
+            btnAttrs = [btnCls, btnAction]
             inputAttrs =
               class_ "input"
                 : id_ newTagInputId
@@ -259,7 +292,7 @@ articlesList title PagedArticles {..} =
       [class_ "content"]
       [ div_
           [class_ "grid"]
-          [div_ [class_ "cell"] (map articleOverview $ toList articles)]
+          [div_ [class_ "cell"] $ map articleOverview $ toList articles]
       ]
   ]
 

@@ -33,6 +33,8 @@ module Humblr.Frontend.Actions (
   bodyT,
   tagsT,
   newTagT,
+  SlugMode (..),
+  slugL,
 ) where
 
 import Control.Exception.Safe (Exception (..), tryAny)
@@ -48,6 +50,7 @@ import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, getCurrentTime)
 import Data.Time.Format (formatTime)
 import GHC.Base (Proxy#, proxy#)
+import GHC.Generics (Generic)
 import Humblr.Frontend.Types
 import Language.Javascript.JSaddle (setProp, val)
 import Language.Javascript.JSaddle.Object (Object (..))
@@ -208,6 +211,8 @@ updateModel (ShowErrorNotification msg mstate) m =
 updateModel DismissError m = noEff m {errorMessage = Nothing}
 updateModel (ShowErrorPage title message) m =
   noEff m {mode = ErrorPage MkErrorPage {..}}
+updateModel (SetEditedSlug slg) m =
+  noEff $ m & #mode . #_CreatingArticle . #slug .~ slg
 
 withArticleSlug :: T.Text -> (Article -> JSM Action) -> JSM Action
 withArticleSlug slug k = do
@@ -263,9 +268,14 @@ openTagArticles tag = openEndpoint . rootApiURIs.frontend.tagArticles tag
 openEndpoint :: URI -> Action
 openEndpoint = ChangeUrl
 
+data SlugMode a
+  = FixedSlug (ReifiedGetter a MisoString)
+  | DynamicSlug (ReifiedLens' a MisoString)
+  deriving (Generic)
+
 class HasEditView a where
   viewStateL :: Lens' a EditViewState
-  slugL :: Either (Getter a MisoString) (Lens' a MisoString)
+  slugMode :: SlugMode a
   tagsL :: Lens' a (Seq MisoString)
   newTagL :: Lens' a MisoString
   bodyL :: Lens' a MisoString
@@ -275,16 +285,22 @@ class HasEditView a where
 
 slugG :: (HasEditView a) => Getter a MisoString
 {-# INLINE slugG #-}
-slugG = case slugL of
-  Left g -> g
-  Right l -> l
+slugG = case slugMode of
+  FixedSlug g -> runGetter g
+  DynamicSlug l -> runLens l
+
+slugL :: (HasEditView a) => Maybe (Lens' a MisoString)
+{-# INLINE slugL #-}
+slugL = case slugMode of
+  FixedSlug {} -> Nothing
+  DynamicSlug l -> Just (runLens l)
 
 instance HasEditView EditedArticle where
   viewStateL = #viewState
   tagsL = #edition . #tags
   bodyL = #edition . #body
   newTagL = #edition . #newTag
-  slugL = Left $ #original . #slug
+  slugMode = FixedSlug $ Getter $ #original . #slug
   currentArticle art =
     Article
       { updatedAt = art.original.updatedAt
@@ -300,7 +316,7 @@ instance HasEditView NewArticle where
   viewStateL = #viewState
   tagsL = #fragment . #tags
   bodyL = #fragment . #body
-  slugL = Right #slug
+  slugMode = DynamicSlug $ Lens #slug
   newTagL = #fragment . #newTag
   currentArticle art =
     Article

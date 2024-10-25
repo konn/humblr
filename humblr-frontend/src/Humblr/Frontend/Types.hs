@@ -177,6 +177,7 @@ data Action
   | SaveEditingArticle
   | OpenTagArticles !T.Text !(Maybe Word)
   | ShowTagArticles !T.Text !PagedArticles
+  | SetEditedSlug !MisoString
   | ShowErrorNotification !ErrorMessage !(Maybe Mode)
   | DismissError
   | ShowErrorPage !MisoString !MisoString
