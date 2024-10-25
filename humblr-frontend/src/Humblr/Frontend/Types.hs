@@ -94,7 +94,7 @@ data Action
   deriving (Show, Generic)
 
 api :: RestApi (AsClientT (FetchT JSM))
-api = genericClient
+api = (genericClient @RootAPI).apiRoutes
 
 type AsRoute :: Type -> Type
 data AsRoute a
