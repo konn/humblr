@@ -24,6 +24,7 @@ module Humblr.Frontend.Types (
   Mode (..),
   Action (..),
   ArticleSeed (..),
+  ArticleEdition (..),
   AsRoute,
   callApi,
   api,
@@ -33,7 +34,7 @@ module Humblr.Frontend.Types (
 import Control.Lens
 import Data.Generics.Labels ()
 import Data.Kind (Type)
-import qualified Data.Text as T
+import Data.Text qualified as T
 import GHC.Generics (Generic)
 import Humblr.Types
 import Miso
@@ -53,14 +54,14 @@ data PageOptions = PageOptions
   }
   deriving (Show, Eq, Ord, Generic)
 
-data ArticleSeed = ArticleSeed {body :: !MisoString, tags :: ![T.Text]}
+data ArticleEdition = ArticleEdition {body :: !MisoString, tags :: ![T.Text]}
   deriving (Show, Eq, Ord, Generic)
 
 data Mode
   = TopPage !Word ![Article]
   | ArticlePage !Article
-  | EditingArticle !Article !ArticleSeed
-  | CreatingArticle !T.Text !ArticleSeed
+  | EditingArticle !Article !ArticleEdition
+  | CreatingArticle !T.Text !ArticleEdition
   | TagArticles !T.Text !Word ![Article]
   | ErrorPage !MisoString !MisoString
   | Idle

@@ -11,6 +11,8 @@
 module Humblr.Types (
   Article (..),
   ArticleSummary (..),
+  ArticleSeed (..),
+  ArticleUpdate (..),
 
   -- * APIs
   User (..),
@@ -105,18 +107,22 @@ data AdminAPI mode = AdminAPI
       mode :- "articles" :> QueryParam "page" Word :> Get '[JSON] [Article]
   , getArticle ::
       mode :- "articles" :> Capture "slug" T.Text :> Get '[JSON] Article
-  , headArticle ::
-      mode :- "articles" :> Capture "slug" T.Text :> Verb HEAD 200 '[PlainText] NoContent
-  , postArticle ::
-      mode :- "articles" :> RequireUser :> ReqBody '[JSON] Article :> Post '[JSON] Article
-  , deleteArticle ::
-      mode :- "articles" :> RequireUser :> Capture "slug" T.Text :> Delete '[JSON] ()
+  , -- , headArticle ::
+    --     mode :- "articles" :> Capture "slug" T.Text :> Verb HEAD 200 '[PlainText] NoContent
+    postArticle ::
+      mode :- "articles" :> RequireUser :> ReqBody '[JSON] ArticleSeed :> Post '[JSON] NoContent
   , putArticle ::
-      mode :- "articles" :> RequireUser :> Capture "slug" T.Text :> ReqBody '[JSON] Article :> Put '[JSON] Article
+      mode :- "articles" :> RequireUser :> Capture "slug" T.Text :> ReqBody '[JSON] ArticleUpdate :> Put '[JSON] NoContent
+  , deleteArticle ::
+      mode :- "articles" :> RequireUser :> Capture "slug" T.Text :> Delete '[JSON] NoContent
   , listTags :: mode :- "tags" :> Get '[JSON] [T.Text]
   , listTagArticles :: mode :- "tags" :> Capture "tag" T.Text :> QueryParam "page" Word :> Get '[JSON] [Article]
   }
   deriving (Generic)
+
+data ArticleUpdate = ArticleUpdate {body :: T.Text, tags :: [T.Text]}
+  deriving stock (Generic, Show)
+  deriving anyclass (FromJSON, ToJSON)
 
 data FrontendRoutes mode = FrontendRoutes
   { topPage :: mode :- QueryParam "page" Word :> Raw
@@ -126,6 +132,14 @@ data FrontendRoutes mode = FrontendRoutes
   , tagArticles :: mode :- "tags" :> Capture "tag" T.Text :> QueryParam "page" Word :> Raw
   }
   deriving (Generic)
+
+data ArticleSeed = ArticleSeed
+  { body :: !T.Text
+  , slug :: !T.Text
+  , tags :: ![T.Text]
+  }
+  deriving stock (Generic, Show, Eq)
+  deriving anyclass (FromJSON, ToJSON)
 
 data Article = Article
   { body :: !T.Text

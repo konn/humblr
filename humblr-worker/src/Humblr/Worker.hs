@@ -18,50 +18,49 @@
 module Humblr.Worker (handlers, JSObject (..), JSHandlers) where
 
 import Control.Concurrent.Async (wait)
-import Control.Exception.Safe (Exception (..), throwString)
+import Control.Exception.Safe (Exception (..), throwString, tryAny)
 import Control.Monad
+import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as A
 import Data.Aeson qualified as J
 import Data.ByteString.Lazy qualified as LBS
+import Data.ByteString.Lazy.Char8 qualified as LBS8
 import Data.Coerce (coerce)
 import Data.Either (partitionEithers)
 import Data.Functor ((<&>))
 import Data.Generics.Labels ()
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.String (fromString)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Data.Time (UTCTime)
+import Data.Text.Lazy qualified as LT
+import Data.Text.Lazy.Encoding qualified as LTE
+import Data.Time (UTCTime, getCurrentTime)
 import Data.Vector qualified as V
-import Effectful hiding (inject, (:>))
-import Effectful.Dispatch.Static (unsafeEff_)
-import Effectful.Servant.Cloudflare.Workers
-import Effectful.Servant.Cloudflare.Workers.Assets (
-  AssetsClass,
-  serveAssets,
- )
-import Effectful.Servant.Cloudflare.Workers.Cache (CacheOptions (..), serveCached)
-import Effectful.Servant.Cloudflare.Workers.D1 qualified as D1
-import Effectful.Servant.Cloudflare.Workers.R2 (R2Class)
-import Effectful.Servant.Cloudflare.Workers.R2 qualified as R2
 import GHC.Generics (Generic)
-import GHC.Stack
 import GHC.Wasm.Object.Builtins
 import GHC.Word
 import Humblr.Types
-import Network.Cloudflare.Worker.Binding
-import Network.Cloudflare.Worker.Binding qualified as B
+import Network.Cloudflare.Worker.Binding hiding (getBinding, getSecret)
+import Network.Cloudflare.Worker.Binding qualified as Raw
+import Network.Cloudflare.Worker.Binding.Assets (AssetsClass)
 import Network.Cloudflare.Worker.Binding.Assets qualified as RawAssets
 import Network.Cloudflare.Worker.Binding.D1 (D1Class, FromD1Row, FromD1Value, ToD1Row, ToD1Value)
-import Network.Cloudflare.Worker.Handler
+import Network.Cloudflare.Worker.Binding.D1 qualified as D1
+import Network.Cloudflare.Worker.Binding.R2 (R2Class)
 import Network.Cloudflare.Worker.Request qualified as Req
 import Network.URI
-import Servant.API (Raw, toUrlPiece)
-import Servant.Auth.Cloudflare.Workers (defaultCloudflareZeroTrustSettings, toJWTSettings)
-import Servant.Cloudflare.Workers.Cache (serveCachedRaw)
+import Servant.Auth.Cloudflare.Workers
+import Servant.Cloudflare.Workers.Assets (serveAssets)
+import Servant.Cloudflare.Workers.Cache (CacheOptions (..), serveCached, serveCachedRaw)
+import Servant.Cloudflare.Workers.Generic (AsWorker, genericCompileWorkerContext)
 import Servant.Cloudflare.Workers.Internal.Response (toWorkerResponse)
+import Servant.Cloudflare.Workers.Internal.RoutingApplication
 import Servant.Cloudflare.Workers.Internal.ServerError (responseServerError)
-import Servant.Cloudflare.Workers.Prelude (Tagged (..), WorkerT)
+import Servant.Cloudflare.Workers.Prelude hiding (inject)
+import Servant.Cloudflare.Workers.R2 qualified as R2
+
+type App = Handler HumblrEnv
 
 type HumblrEnv =
   BindingsClass
@@ -82,14 +81,13 @@ assetCacheOptions =
 
 handlers :: IO JSHandlers
 handlers =
-  genericCompileWorkerContextWith @HumblrEnv
-    id
+  genericCompileWorkerContext @HumblrEnv
     ( \env _ -> do
         let audience = do
-              let aud = B.getSecret "CF_AUD_TAG" env
+              let aud = Raw.getSecret "CF_AUD_TAG" env
               guard $ not $ T.null aud
               pure aud
-        team0 <- case A.fromJSON $ B.getEnv "CF_TEAM_NAME" env of
+        team0 <- case A.fromJSON $ Raw.getEnv "CF_TEAM_NAME" env of
           J.Error e -> throwString $ "Could not parse CF_TEAM_NAME: " <> e
           J.Success x -> pure x
         let team = do
@@ -101,9 +99,7 @@ handlers =
     )
     workers
 
-workers ::
-  (HasUniqueWorkerWith HumblrEnv es) =>
-  RootAPI (AsWorkerT HumblrEnv (Eff es))
+workers :: RootAPI (AsWorker HumblrEnv)
 workers =
   RootAPI
     { frontend = frontend
@@ -112,10 +108,10 @@ workers =
     , resources = resources
     }
 
-resources :: WorkerT HumblrEnv Raw (Eff es)
+resources :: Worker HumblrEnv Raw
 resources = R2.serveBucketRel "R2"
 
-frontend :: FrontendRoutes (AsWorkerT HumblrEnv (Eff es))
+frontend :: FrontendRoutes (AsWorker HumblrEnv)
 frontend =
   FrontendRoutes
     { topPage = const serveIndex
@@ -125,7 +121,7 @@ frontend =
     , articlePage = const serveIndex
     }
 
-serveIndex :: WorkerT HumblrEnv Raw (Eff es)
+serveIndex :: Worker HumblrEnv Raw
 serveIndex = serveCachedRaw assetCacheOptions $ Tagged \req env _ ->
   if not $ null req.pathInfo
     then toWorkerResponse $ responseServerError err404 {errBody = "Not Found"}
@@ -133,53 +129,121 @@ serveIndex = serveCachedRaw assetCacheOptions $ Tagged \req env _ ->
       let link = "/" <> toUrlPiece rootApiLinks.assets <> "/index.html"
           rawUrl = Req.getUrl req.rawRequest
           !url = fromString @USVString $ show $ (fromMaybe (error $ "Invalid Url: " <> show rawUrl) $ parseURI $ T.unpack rawUrl) {uriPath = T.unpack link}
-      resp <- await =<< RawAssets.fetch (B.getBinding "ASSETS" env) (inject url)
+      resp <- await =<< RawAssets.fetch (Raw.getBinding "ASSETS" env) (inject url)
       pure resp
 
+protectIfConfigured ::
+  AuthResult User ->
+  App a ->
+  App a
+protectIfConfigured auth act = do
+  audience <- getSecret "CF_AUD_TAG"
+  if T.null audience
+    then act
+    else case auth of
+      Authenticated User {} -> act
+      _ -> serverError err403 {errBody = "Unauthorised"}
+
 apiRoutes ::
-  (HasUniqueWorkerWith HumblrEnv es) =>
-  AdminAPI (AsWorkerT HumblrEnv (Eff es))
+  AdminAPI (AsWorker HumblrEnv)
 apiRoutes =
   AdminAPI
-    { -- putArticle = _putArticle
-      -- , postArticle = _postArticle
-      -- , listTags = _listTags
-      listTagArticles = listTagArticles
+    { putArticle = putArticle
+    , postArticle = postArticle
+    , listTags = listTags
+    , listTagArticles = listTagArticles
     , listArticles = listArticles
-    , -- , headArticle = _headArticle
-      getArticle = getArticle
-      -- , deleteArticle = _deleteArticle
+    , getArticle = getArticle
+    , deleteArticle = deleteArticle
     }
 
-getArticle :: (HasUniqueWorkerWith HumblrEnv es) => T.Text -> Eff es Article
+putArticle :: AuthResult User -> T.Text -> ArticleUpdate -> Handler HumblrEnv NoContent
+putArticle user slug upd = protectIfConfigured user do
+  qs <- getPresetQueries
+  art <-
+    either (\e -> serverError err500 {errBody = "Schema Error (article): " <> LBS8.pack e}) (pure . (.id))
+      . D1.parseD1RowView @ArticleRow
+      =<< maybe (serverError err404 {errBody = "Article not found: " <> LBS.fromStrict (TE.encodeUtf8 slug)}) (pure)
+      =<< liftIO . (wait <=< D1.first)
+      =<< bind qs.lookupFromSlug slug
+  -- FIXME: make these two together with @art@ into a single batch.
+  insTagsQ <- mapM (bind qs.tryInsertTag) upd.tags
+  tagIdsQ <- mapM (bind qs.lookupTagName) upd.tags
+  d1 <- getBinding "D1"
+  tagIds <-
+    V.toList
+      . V.mapMaybe (either (const Nothing) (Just . (.id)) . D1.parseD1RowView @TagRow)
+      . V.concatMap (.results)
+      <$> liftIO (wait =<< D1.batch d1 (V.fromList $ insTagsQ ++ tagIdsQ))
+
+  updQ <- mkArticleUpdateBody >>= \q -> bind q art upd
+  delTagQ <- mkDeleteAllTagsOnArticle >>= \q -> bind q art
+  insTagQ <- mapM (bind qs.tagArticle art) tagIds
+  resl <-
+    liftIO $
+      wait
+        =<< D1.batch d1 (V.fromList $ updQ : delTagQ : insTagQ)
+  unless (all (.success) resl) $
+    serverError err500 {errBody = "Failed to update article"}
+  pure NoContent
+
+deleteArticle :: AuthResult User -> T.Text -> Handler HumblrEnv NoContent
+deleteArticle user slug = protectIfConfigured user do
+  qs <- getPresetQueries
+  met <- liftIO . (wait <=< D1.first) =<< bind qs.lookupFromSlug slug
+  let martId = either (const Nothing) (Just . (.id)) . D1.parseD1RowView @ArticleRow =<< met
+  case martId of
+    Nothing -> serverError err404 {errBody = "Article not found"}
+    Just aid -> do
+      delQ <- mkDeleteAllTagsOnArticle
+      delTags <- bind delQ aid
+      delArtQ <- mkDeleteArticle
+      delArt <- bind delArtQ aid
+      d1 <- getBinding "D1"
+      NoContent <$ liftIO (wait =<< D1.batch d1 (V.fromList [delTags, delArt]))
+
+postArticle :: AuthResult User -> ArticleSeed -> App NoContent
+postArticle user art = protectIfConfigured user do
+  qs <- getPresetQueries
+  tryAny (createArticle qs art) >>= \case
+    Left e ->
+      serverError err409 {errBody = "Failed to create article: " <> LTE.encodeUtf8 (LT.pack $ displayException e)}
+    Right () -> pure NoContent
+
+listTags :: App [T.Text]
+listTags = do
+  serveCached
+    CacheOptions
+      { cacheTTL = 3600 * 8
+      , onlyOk = True
+      , includeQuery = True
+      }
+  listAllTags
+
+getArticle :: T.Text -> App Article
 getArticle slug = do
   serveCached
     CacheOptions
-      { cacheTTL = 3600 * 24
+      { cacheTTL = 3600 * 8
       , onlyOk = True
       , includeQuery = True
       }
   qs <- getPresetQueries
   maybe
     ( serverError
-        err404
-          { errBody =
-              "Article Not Found: "
-                <> LBS.fromStrict (TE.encodeUtf8 slug)
-          }
+        err404 {errBody = "Article Not Found: " <> LBS.fromStrict (TE.encodeUtf8 slug)}
     )
     pure
     =<< lookupSlug qs slug
 
-listTagArticles :: (HasUniqueWorkerWith HumblrEnv es) => T.Text -> Maybe Word -> Eff es [Article]
+listTagArticles :: T.Text -> Maybe Word -> App [Article]
 listTagArticles tag mpage = do
   qs <- getPresetQueries
   getArticlesWithTag qs tag $ fromIntegral <$> mpage
 
 listArticles ::
-  (HasUniqueWorkerWith HumblrEnv es) =>
   Maybe Word ->
-  Eff es [Article]
+  App [Article]
 listArticles mpage = do
   qs <- getPresetQueries
   getRecentArticles qs $ fromIntegral <$> mpage
@@ -214,24 +278,23 @@ type family xs ~> a where
   '[] ~> a = a
   (x ': xs) ~> a = x -> (xs ~> a)
 
-newtype Preparation params = Preparation (forall es -> (HasUniqueWorker es) => params ~> Eff es D1.Statement)
+newtype Preparation params = Preparation (params ~> App D1.Statement)
 
-bind :: forall es params. Preparation params -> (HasUniqueWorker es) => params ~> Eff es D1.Statement
-bind (Preparation f) =
-  f es
+bind :: forall params. Preparation params -> params ~> App D1.Statement
+bind (Preparation f) = f
 
 data PresetQueries = PresetQueries
   { tryInsertTag :: !(Preparation '[T.Text])
   , lookupTagName :: !(Preparation '[T.Text])
   , articleTags :: !(Preparation '[ArticleId])
-  , insertArticle :: !(Preparation '[Article])
+  , insertArticle :: !(Preparation '[ArticleSeed])
   , tagArticle :: !(Preparation '[ArticleId, TagId])
   , articleWithTags :: !(Preparation '[T.Text, Word32])
   , lookupFromSlug :: !(Preparation '[T.Text])
   , recentArticles :: !(Preparation '[Word32])
   }
 
-getPresetQueries :: (HasUniqueWorkerWith HumblrEnv es) => Eff es PresetQueries
+getPresetQueries :: App PresetQueries
 getPresetQueries = do
   tryInsertTag <- mkTryInsertTagQ
   lookupTagName <- mkLookupTagNameQ
@@ -243,15 +306,24 @@ getPresetQueries = do
   recentArticles <- mkRecentArticlesQ
   pure PresetQueries {..}
 
+listAllTags :: App [T.Text]
+listAllTags = do
+  qry <- prepare "SELECT * FROM tags"
+  tags <- liftIO $ wait =<< D1.all =<< D1.bind qry mempty
+  pure
+    $ mapMaybe
+      ( either (const Nothing) (Just . (.name))
+          . D1.parseD1RowView @TagRow
+      )
+    $ V.toList tags.results
+
 getRecentArticles ::
-  (HasUniqueWorkerWith HumblrEnv es) =>
   PresetQueries ->
   Maybe Word32 ->
-  Eff es [Article]
+  App [Article]
 getRecentArticles qs page = do
   rows <-
-    unsafeEff_ . wait
-      =<< D1.all
+    liftIO . (wait <=< D1.all)
       =<< bind qs.recentArticles (maybe 0 (* 10) page)
   unless rows.success $
     throwString "Failed to fetch recent articles"
@@ -261,96 +333,141 @@ getRecentArticles qs page = do
       "Failed to parse article row: " <> show fails
   mapM (fromArticleRow qs) articles
 
-mkRecentArticlesQ ::
-  (HasUniqueWorkerWith HumblrEnv es) =>
-  Eff es (Preparation '[Word32])
-mkRecentArticlesQ =
-  D1.prepare' "D1" "SELECT * FROM articles ORDER BY createdAt DESC LIMIT 10 OFFSET ?" <&> \prep ->
-    Preparation \_ page ->
-      D1.bind prep (V.singleton $ D1.toD1ValueView $ page * 10)
+mkRecentArticlesQ :: App (Preparation '[Word32])
+mkRecentArticlesQ = do
+  d1 <- getBinding "D1"
+  liftIO (D1.prepare d1 "SELECT * FROM articles ORDER BY createdAt DESC LIMIT 10 OFFSET ?") <&> \prep ->
+    Preparation \page ->
+      liftIO $ D1.bind prep (V.singleton $ D1.toD1ValueView $ page * 10)
 
-mkLookupSlugQ :: (HasUniqueWorkerWith HumblrEnv es) => Eff es (Preparation '[T.Text])
-mkLookupSlugQ =
-  D1.prepare' "D1" "SELECT * FROM articles WHERE slug = ?" <&> \prep ->
-    Preparation \_ slug ->
-      D1.bind prep (V.singleton $ D1.toD1ValueView slug)
+mkLookupSlugQ :: App (Preparation '[T.Text])
+mkLookupSlugQ = do
+  d1 <- getBinding "D1"
+  liftIO $
+    D1.prepare d1 "SELECT * FROM articles WHERE slug = ?" <&> \prep ->
+      Preparation \slug ->
+        liftIO $ D1.bind prep (V.singleton $ D1.toD1ValueView slug)
 
-lookupSlug ::
-  ( HasCallStack
-  , HasUniqueWorkerWith HumblrEnv es
-  ) =>
-  PresetQueries ->
-  T.Text ->
-  Eff es (Maybe Article)
+mkArticleUpdateBody :: App (Preparation '[ArticleId, ArticleUpdate])
+mkArticleUpdateBody = do
+  prepare "UPDATE articles SET body = ?1, lastUpdate = ?2 WHERE id = ?3" <&> \prep ->
+    Preparation \aid ArticleUpdate {..} -> do
+      now <- liftIO getCurrentTime
+      liftIO $
+        D1.bind prep $
+          V.fromList
+            [ D1.toD1ValueView body
+            , D1.toD1ValueView now
+            , D1.toD1ValueView aid
+            ]
+
+lookupSlug :: PresetQueries -> T.Text -> App (Maybe Article)
 lookupSlug qs slug = do
-  mrow <-
-    unsafeEff_ . wait
-      =<< D1.first
-      =<< bind qs.lookupFromSlug slug
+  mrow <- liftIO . (wait <=< D1.first) =<< bind qs.lookupFromSlug slug
   forM mrow $ \row -> do
     case D1.parseD1RowView row of
       Right r -> fromArticleRow qs r
       Left err -> throwString err
 
-mkTryInsertTagQ :: (HasUniqueWorkerWith HumblrEnv es) => Eff es (Preparation '[T.Text])
+prepare :: String -> App D1.PreparedStatement
+prepare q = do
+  d1 <- getBinding "D1"
+  liftIO $ D1.prepare d1 q
+
+mkTryInsertTagQ :: App (Preparation '[T.Text])
 mkTryInsertTagQ =
-  D1.prepare' "D1" "INSERT OR IGNORE INTO tags (name) VALUES (?)"
-    <&> \prep -> Preparation \_ name ->
-      D1.bind prep (V.singleton $ D1.toD1ValueView name)
+  prepare "INSERT OR IGNORE INTO tags (name) VALUES (?)"
+    <&> \prep -> Preparation \name ->
+      liftIO $ D1.bind prep (V.singleton $ D1.toD1ValueView name)
 
-mkLookupTagNameQ ::
-  (HasUniqueWorkerWith HumblrEnv es) =>
-  Eff es (Preparation '[T.Text])
+mkLookupTagNameQ :: App (Preparation '[T.Text])
 mkLookupTagNameQ =
-  D1.prepare' "D1" "SELECT * FROM tags WHERE name = ?" <&> \prep ->
-    Preparation \_ name ->
-      D1.bind prep (V.singleton $ D1.toD1ValueView name)
+  prepare "SELECT * FROM tags WHERE name = ?" <&> \prep ->
+    Preparation \name ->
+      liftIO $ D1.bind prep (V.singleton $ D1.toD1ValueView name)
 
-mkArticleTagsQ ::
-  (HasUniqueWorkerWith HumblrEnv es) =>
-  Eff es (Preparation '[ArticleId])
+mkArticleTagsQ :: App (Preparation '[ArticleId])
 mkArticleTagsQ =
-  D1.prepare' "D1" "SELECT tag.name FROM tags tag INNER JOIN articleTags assoc ON tag.id = assoc.tag WHERE assoc.article = ?" <&> \prep ->
-    Preparation \_ aid ->
-      D1.bind prep (V.singleton $ D1.toD1ValueView aid)
+  prepare "SELECT tag.name FROM tags tag INNER JOIN articleTags assoc ON tag.id = assoc.tag WHERE assoc.article = ?" <&> \prep ->
+    Preparation \aid ->
+      liftIO $ D1.bind prep (V.singleton $ D1.toD1ValueView aid)
 
-mkInsertArticleQ ::
-  (HasUniqueWorkerWith HumblrEnv es) =>
-  Eff es (Preparation '[Article])
+createArticle :: PresetQueries -> ArticleSeed -> App ()
+createArticle qs ArticleSeed {..} = do
+  tagQs <- mapM (bind qs.tryInsertTag) tags
+  newArt <- bind qs.insertArticle ArticleSeed {..}
+  tagIdsQ <- mapM (bind qs.lookupTagName) tags
+  artIdQ <-
+    prepare "SELECT id FROM articles WHERE slug = ?" >>= \q ->
+      liftIO (D1.bind q $ V.singleton $ D1.toD1ValueView slug)
+  d1 <- getBinding "D1"
+  vs <-
+    liftIO $
+      wait
+        =<< D1.batch d1 (V.fromList $ newArt : tagQs ++ tagIdsQ ++ [artIdQ])
+  unless (V.all (.success) vs) $
+    serverError $
+      err409 {errBody = "Failed to insert article: " <> LBS.fromStrict (TE.encodeUtf8 slug)}
+  let (_, rest) = V.splitAt (length tags) $ V.drop 1 vs
+      (rawTagIds, V.head -> rawArtId) = V.splitAt (length tags) rest
+      tagIds = V.mapMaybe (either (const Nothing) (Just . (.id)) . D1.parseD1RowView @TagRow) $ V.concatMap (.results) rawTagIds
+      artId =
+        either (error "Failed to parse article") (.id) $
+          D1.parseD1RowView @ArticleRow $
+            V.head rawArtId.results
+  void $ mapM (bind qs.tagArticle artId) tagIds
+
+mkInsertArticleQ :: App (Preparation '[ArticleSeed])
 mkInsertArticleQ =
-  D1.prepare' "D1" "INSERT INTO articles (body, createdAt, lastUpdate, slug) VALUES (?1, ?2, ?3, ?4, ?5)" <&> \prep ->
-    Preparation \_ Article {..} ->
-      D1.bind prep $
-        V.fromList
-          [ D1.toD1ValueView body
-          , D1.toD1ValueView createdAt
-          , D1.toD1ValueView updatedAt
-          , D1.toD1ValueView slug
-          ]
+  prepare "INSERT INTO articles (body, createdAt, lastUpdate, slug) VALUES (?1, ?2, ?3, ?4, ?5)" <&> \prep ->
+    Preparation \ArticleSeed {..} -> do
+      now <- liftIO getCurrentTime
+      liftIO $
+        D1.bind prep $
+          V.fromList
+            [ D1.toD1ValueView body
+            , D1.toD1ValueView now
+            , D1.toD1ValueView now
+            , D1.toD1ValueView slug
+            ]
 
-mkTagArticleQ ::
-  (HasUniqueWorkerWith HumblrEnv es) =>
-  Eff es (Preparation '[ArticleId, TagId])
+mkTagArticleQ :: App (Preparation '[ArticleId, TagId])
 mkTagArticleQ =
-  D1.prepare' "D1" "INSERT INTO articleTags (article, tag) VALUES (?1, ?2)" <&> \prep ->
-    Preparation \_ aid tid ->
-      D1.bind prep $
-        V.fromList
-          [ D1.toD1ValueView aid
-          , D1.toD1ValueView tid
-          ]
+  prepare "INSERT INTO articleTags (article, tag) VALUES (?1, ?2) ON CONFLICT DO NOTHING" <&> \prep ->
+    Preparation \aid tid ->
+      liftIO $
+        D1.bind prep $
+          V.fromList
+            [ D1.toD1ValueView aid
+            , D1.toD1ValueView tid
+            ]
 
-mkArticleWithTagsQ :: (HasUniqueWorkerWith HumblrEnv es) => Eff es (Preparation '[T.Text, Word32])
+mkArticleWithTagsQ :: App (Preparation '[T.Text, Word32])
 mkArticleWithTagsQ =
-  D1.prepare' "D1" "SELECT a.* FROM articles a INNER JOIN articleTags at ON a.id = at.article INNER JOIN tags t ON at.tag = t.id WHERE t.name = ?1 ORDER BY a.createdAt DESC LIMIT 10 OFFSET ?2" <&> \prep ->
-    Preparation \_ name page ->
-      D1.bind prep (V.fromList [D1.toD1ValueView name, D1.toD1ValueView $ page * 10])
+  prepare "SELECT a.* FROM articles a INNER JOIN articleTags at ON a.id = at.article INNER JOIN tags t ON at.tag = t.id WHERE t.name = ?1 ORDER BY a.createdAt DESC LIMIT 10 OFFSET ?2" <&> \prep ->
+    Preparation \name page ->
+      liftIO $ D1.bind prep (V.fromList [D1.toD1ValueView name, D1.toD1ValueView $ page * 10])
 
-getArticlesWithTag :: (HasCallStack, HasUniqueWorker es) => PresetQueries -> T.Text -> Maybe Word32 -> Eff es [Article]
+mkDeleteAllTagsOnArticle :: App (Preparation '[ArticleId])
+mkDeleteAllTagsOnArticle = do
+  d1 <- getBinding "D1"
+  liftIO $
+    D1.prepare d1 "DELETE FROM articleTags WHERE article = ?" <&> \prep ->
+      Preparation \art ->
+        liftIO $ D1.bind prep (V.singleton $ D1.toD1ValueView art)
+
+mkDeleteArticle :: App (Preparation '[ArticleId])
+mkDeleteArticle = do
+  d1 <- getBinding "D1"
+  liftIO $
+    D1.prepare d1 "DELETE FROM articles WHERE id = ?" <&> \prep ->
+      Preparation \aid ->
+        liftIO $ D1.bind prep (V.singleton $ D1.toD1ValueView aid)
+
+getArticlesWithTag :: PresetQueries -> T.Text -> Maybe Word32 -> App [Article]
 getArticlesWithTag qs tag mpage = do
   rows <-
-    unsafeEff_ . wait
-      =<< D1.all
+    liftIO . (wait <=< D1.all)
       =<< bind qs.articleWithTags tag (fromMaybe 0 mpage)
   unless rows.success $
     throwString "Failed to fetch articles with tag"
@@ -373,12 +490,11 @@ getTagName :: TagName -> T.Text
 getTagName = coerce
 
 fromArticleRow ::
-  (HasCallStack, HasUniqueWorker es) =>
   PresetQueries ->
   ArticleRow ->
-  Eff es Article
+  App Article
 fromArticleRow qs arow = do
-  rows <- unsafeEff_ . wait =<< D1.all =<< bind qs.articleTags arow.id
+  rows <- liftIO . (wait <=< D1.all) =<< bind qs.articleTags arow.id
   unless rows.success $
     throwString "Failed to fetch tags for article"
   let (fails, tags) = partitionEithers $ map (fmap getTagName . D1.parseD1RowView) $ V.toList rows.results

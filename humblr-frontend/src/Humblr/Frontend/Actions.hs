@@ -27,7 +27,7 @@ import Control.Exception.Safe (Exception (..), tryAny)
 import Data.Generics.Labels ()
 import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
-import qualified Data.Text as T
+import Data.Text qualified as T
 import Humblr.Frontend.Types
 import Miso
 import Miso.String (ToMisoString (toMisoString))
@@ -62,7 +62,7 @@ updateModel NewArticle m =
       { mode =
           CreatingArticle
             ""
-            ArticleSeed {body = mempty, tags = mempty}
+            ArticleEdition {body = mempty, tags = mempty}
       }
 updateModel (OpenTagArticles tag mcur) m =
   m <# do
@@ -77,8 +77,8 @@ updateModel DissmissError m = noEff m {errorMessage = Nothing}
 updateModel (ShowErrorPage title msg) m =
   noEff m {mode = ErrorPage title msg}
 
-toArticleSeed :: Article -> ArticleSeed
-toArticleSeed art = ArticleSeed {body = toMisoString art.body, tags = art.tags}
+toArticleSeed :: Article -> ArticleEdition
+toArticleSeed art = ArticleEdition {body = toMisoString art.body, tags = art.tags}
 
 withArticleSlug :: T.Text -> (Article -> JSM Action) -> JSM Action
 withArticleSlug slug k = do

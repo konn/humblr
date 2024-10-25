@@ -1,8 +1,6 @@
 with-compiler: wasm32-wasi-9.10.1
+packages: humblr-*/*.cabal
 import: cabal-common.project
-packages:
-  humblr-*/*.cabal
-
 optimization: 2
 active-repositories: hackage.haskell.org
 jobs: $ncpus
