@@ -22,6 +22,7 @@ module Humblr.Frontend.Types (
   Model (..),
   initialModel,
   Mode (..),
+  TopPage (..),
   ErrorPage (..),
   Action (..),
   ArticleSeed (..),
@@ -60,13 +61,16 @@ data ArticleEdition = ArticleEdition {body :: !MisoString, tags :: ![T.Text]}
   deriving (Show, Eq, Ord, Generic)
 
 data Mode
-  = TopPage !(Cursored Article)
+  = TopPage !TopPage
   | ArticlePage !Article
   | EditingArticle !Article !ArticleEdition
   | CreatingArticle !T.Text !ArticleEdition
-  | TagArticles !T.Text ![Article]
+  | TagArticles !T.Text !Word ![Article]
   | ErrorPage !ErrorPage
   | Idle
+  deriving (Show, Generic, Eq)
+
+data TopPage = MkTopPage {page :: !Word, articles :: ![Article]}
   deriving (Show, Generic, Eq)
 
 data ErrorPage = MkErrorPage
@@ -88,14 +92,14 @@ data Action
   = ChangeUrl !URI
   | HandleUrl !URI
   | OpenTopPage !(Maybe Word)
-  | ShowTopPage !(Cursored Article)
+  | ShowTopPage !TopPage
   | OpenArticle !T.Text
   | ShowArticle !Article
   | NewArticle
   | OpenEditArticle !T.Text
   | ShowEditArticle !Article
   | OpenTagArticles !T.Text !(Maybe Word)
-  | ShowTagArticles !T.Text ![Article]
+  | ShowTagArticles !T.Text !Word ![Article]
   | ReportError !MisoString
   | DissmissError
   | ShowErrorPage !MisoString !MisoString

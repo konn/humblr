@@ -48,8 +48,8 @@ updateModel (OpenTopPage mcur) m =
     eith <- tryAny $ callApi (api.listArticles mcur)
     case eith of
       Left err -> pure $ ReportError $ toMisoString $ displayException err
-      Right arts -> pure $ ShowTopPage arts
-updateModel (ShowTopPage cur) m = noEff m {mode = TopPage cur}
+      Right articles -> pure $ ShowTopPage MkTopPage {page = fromMaybe 0 mcur, ..}
+updateModel (ShowTopPage topPage) m = noEff m {mode = TopPage topPage}
 updateModel (OpenArticle slug) m =
   m <# withArticleSlug slug (pure . ShowArticle)
 updateModel (ShowArticle article) m = noEff m {mode = ArticlePage article}
@@ -70,9 +70,9 @@ updateModel (OpenTagArticles tag mcur) m =
     eith <- tryAny $ callApi (api.listTagArticles tag mcur)
     case eith of
       Left err -> pure $ ReportError $ toMisoString $ displayException err
-      Right arts -> pure $ ShowTagArticles tag arts
-updateModel (ShowTagArticles tag arts) m =
-  noEff m {mode = TagArticles tag arts}
+      Right arts -> pure $ ShowTagArticles tag (fromMaybe 0 mcur) arts
+updateModel (ShowTagArticles tag cur arts) m =
+  noEff m {mode = TagArticles tag cur arts}
 updateModel (ReportError msg) m = noEff m {errorMessage = Just msg}
 updateModel DissmissError m = noEff m {errorMessage = Nothing}
 updateModel (ShowErrorPage title message) m =

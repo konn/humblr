@@ -232,9 +232,7 @@ listTagArticles :: T.Text -> Maybe Word -> App [Article]
 listTagArticles tag mpage = do
   getArticlesWithTag tag $ fromIntegral <$> mpage
 
-listArticles ::
-  Maybe Word ->
-  App (Cursored Article)
+listArticles :: Maybe Word -> App [Article]
 listArticles mpage = getRecentArticles $ fromIntegral <$> mpage
 
 newtype TagId = TagId {tagId :: Word32}
@@ -274,30 +272,19 @@ bind (Preparation f) = f
 
 getRecentArticles ::
   Maybe Word32 ->
-  App (Cursored Article)
+  App [Article]
 getRecentArticles page = do
-  d1 <- getBinding "D1"
-  recents <-
-    mkRecentArticlesQ
-      >>= \q -> bind q (maybe 0 (* 10) page)
-  totalsQ <- bind =<< mkTotalArticlesQ
-  resls <-
-    liftIO $ wait =<< D1.batch d1 (V.fromList [totalsQ, recents])
-  unless (all (.success) resls) $
+  recents <- mkRecentArticlesQ
+  rows <-
+    liftIO . (wait <=< D1.all)
+      =<< bind recents (maybe 0 (* 10) page)
+  unless rows.success $
     throwString "Failed to fetch recent articles"
-  count <-
-    either (throwString . ("Invalid count: " <>)) pure $
-      D1.parseD1RowView @Counted
-        =<< maybe (Left "No count returned") Right (V.headM . (.results) =<< V.headM resls)
-  let arts = V.last resls
-      (fails, articles) =
-        V.partitionWith id $
-          V.map D1.parseD1RowView arts.results
-  unless (V.null fails) $
+  let (fails, articles) = partitionEithers $ map D1.parseD1RowView $ V.toList rows.results
+  unless (null fails) $
     throwString $
       "Failed to parse article row: " <> show fails
-  items <- mapM fromArticleRow articles
-  pure $ Cursored {items, total = fromIntegral count.cnt, start = maybe 0 fromIntegral page}
+  mapM fromArticleRow articles
 
 mkRecentArticlesQ :: App (Preparation '[Word32])
 mkRecentArticlesQ = do
@@ -305,18 +292,6 @@ mkRecentArticlesQ = do
   liftIO (D1.prepare d1 "SELECT * FROM articles ORDER BY createdAt DESC LIMIT 10 OFFSET ?") <&> \prep ->
     Preparation \page ->
       liftIO $ D1.bind prep (V.singleton $ D1.toD1ValueView $ page * 10)
-
-mkTotalArticlesQ :: App (Preparation '[])
-mkTotalArticlesQ = do
-  d1 <- getBinding "D1"
-  liftIO (D1.prepare d1 "SELECT COUNT(1) As cnt FROM articles") <&> \prep ->
-    Preparation $
-      liftIO $
-        D1.bind prep mempty
-
-data Counted = Counted {cnt :: !Word32}
-  deriving (Show, Eq, Ord, Generic)
-  deriving anyclass (FromD1Row)
 
 mkLookupSlugQ :: App (Preparation '[T.Text])
 mkLookupSlugQ = do

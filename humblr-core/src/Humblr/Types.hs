@@ -92,7 +92,7 @@ isFinished Cursored {..} = start + fromIntegral (V.length items) >= total
 
 data RestApi mode = RestApi
   { listArticles ::
-      mode :- "articles" :> QueryParam "page" Word :> Get '[JSON] (Cursored Article)
+      mode :- "articles" :> QueryParam "page" Word :> Get '[JSON] [Article]
   , getArticle ::
       mode :- "articles" :> Capture "slug" T.Text :> Get '[JSON] Article
   , listTagArticles :: mode :- "tags" :> Capture "tag" T.Text :> QueryParam "page" Word :> Get '[JSON] [Article]
