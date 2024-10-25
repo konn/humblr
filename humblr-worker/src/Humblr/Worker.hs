@@ -48,7 +48,7 @@ import Network.Cloudflare.Worker.Request qualified as Req
 import Network.URI
 import Servant.Auth.Cloudflare.Workers
 import Servant.Cloudflare.Workers.Assets (serveAssets)
-import Servant.Cloudflare.Workers.Cache (CacheOptions (..), serveCached, serveCachedRaw)
+import Servant.Cloudflare.Workers.Cache (CacheOptions (..), serveCachedRaw)
 import Servant.Cloudflare.Workers.Generic (AsWorker, genericCompileWorkerContext)
 import Servant.Cloudflare.Workers.Internal.Response (toWorkerResponse)
 import Servant.Cloudflare.Workers.Internal.RoutingApplication
@@ -215,12 +215,6 @@ postArticle user art = protectIfConfigured user do
 
 getArticle :: T.Text -> App Article
 getArticle slug = do
-  serveCached
-    CacheOptions
-      { cacheTTL = 3600 * 8
-      , onlyOk = True
-      , includeQuery = True
-      }
   maybe
     ( serverError
         err404 {errBody = "Article Not Found: " <> TE.encodeUtf8 slug}

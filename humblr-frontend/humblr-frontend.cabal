@@ -54,7 +54,6 @@ library
     http-types,
     humblr-core,
     humblr-frontend:internal,
-    jsaddle-dom,
     lens,
     miso,
     safe-exceptions,

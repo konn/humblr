@@ -87,6 +87,26 @@ editView ea@EditedArticle {..} =
       , div_
           [class_ "box"]
           $ editMainView viewState ea
+      , div_
+          [class_ "field is-grouped"]
+          [ div_
+              [class_ "control"]
+              [ button_
+                  [ class_ "button is-primary"
+                  , onClick SaveEditingArticle
+                  ]
+                  ["Submit"]
+              ]
+          , -- TODO: Confirm before cancel
+            div_
+              [class_ "control"]
+              [ button_
+                  [ class_ "button is-light"
+                  , onClick $ openArticle original.slug
+                  ]
+                  ["Cancel"]
+              ]
+          ]
       ]
   ]
 
