@@ -133,22 +133,21 @@ editMainView Edit art =
               ]
           ]
       , let disabled = not validTagName
-            tagNameCls =
-              if disabled
-                then class_ "input is-danger"
-                else class_ "input"
             btnCls =
               class_ $
                 MS.unwords $
-                  "button" : if disabled then ["is-disabled"] else ["is-green"]
+                  "button" : if disabled then ["is-link is-light"] else ["is-link"]
             btnAttrs = btnCls : [onClick AddEditingTag | not disabled]
          in div_
               [class_ "field is-grouped"]
-              [ label_ [class_ "label"] ["Tags"]
+              [ label_ [class_ "label"] ["New Tags"]
               , div_
-                  [tagNameCls, onInput $ SetNewTagName . MS.strip]
-                  [ input_ [class_ "input"]
-                  , iconLeft "sell"
+                  [class_ "control has-icons-left"]
+                  [ div_
+                      [class_ "input", onInput $ SetNewTagName . MS.strip]
+                      [ input_ [class_ "input"]
+                      , iconLeft "sell"
+                      ]
                   ]
               , div_
                   [class_ "control"]
