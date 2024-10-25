@@ -52,6 +52,7 @@ library
     servant-auth-lite,
     text,
     time,
+    vector,
 
   hs-source-dirs: src
   -- cabal-gild: discover src --exclude=src/**/Internal.hs --exclude=src/**/Internal/**/*.hs

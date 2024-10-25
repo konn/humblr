@@ -20,6 +20,7 @@
 
 module Humblr.Frontend.View (viewModel) where
 
+import Data.Foldable (toList)
 import Data.Generics.Labels ()
 import Data.String (fromString)
 import Data.Time (defaultTimeLocale, formatTime)
@@ -47,32 +48,34 @@ mainView m = case m.mode of
   ArticlePage art -> []
   EditingArticle art seed -> []
   CreatingArticle slug edition -> []
-  TagArticles tag cur arts -> []
+  TagArticles tag cur -> []
   ErrorPage MkErrorPage {..} ->
     [ h2_ [class_ "title"] [text title]
     , p_ [class_ "content"] [text message]
     ]
 
-topPageView :: TopPage -> [View Action]
-topPageView MkTopPage {..} =
-  [ h2_
-      [class_ "title"]
-      [ "Recent Articles ("
-      , fromString $ show $ page * 10 + 1
-      , "-"
-      , fromString $ show $ page * 10 + fromIntegral (length articles)
-      , ")"
-      ]
-  , p_
-      [class_ "content"]
-      [ div_
-          [class_ "fixed-grid has-1-cols-mobile has-3-cols-tablet has-4-cols"]
+topPageView :: Cursored Article -> [View Action]
+topPageView cur =
+  let page = cur.start `quot` 10 + 1
+      articles = cur.items
+   in [ h2_
+          [class_ "title"]
+          [ "Recent Articles ("
+          , fromString $ show $ page * 10 + 1
+          , "-"
+          , fromString $ show $ page * 10 + fromIntegral (length articles)
+          , ")"
+          ]
+      , p_
+          [class_ "content"]
           [ div_
-              [class_ "grid"]
-              [div_ [class_ "cell"] (map articleOverview articles)]
+              [class_ "fixed-grid has-1-cols-mobile has-3-cols-tablet has-4-cols"]
+              [ div_
+                  [class_ "grid"]
+                  [div_ [class_ "cell"] (map articleOverview $ toList articles)]
+              ]
           ]
       ]
-  ]
 
 articleOverview :: Article -> View Action
 articleOverview Article {..} =
