@@ -82,6 +82,7 @@ data ArticleEdition = ArticleEdition
   { body :: !MisoString
   , tags :: ![MisoString]
   , newTag :: !MisoString
+  , composingTag :: !Bool
   }
   deriving (Show, Eq, Generic)
 
@@ -89,7 +90,7 @@ toArticleUpdate :: ArticleEdition -> ArticleUpdate
 toArticleUpdate ArticleEdition {..} = ArticleUpdate {..}
 
 toArticleEdition :: Article -> ArticleEdition
-toArticleEdition Article {..} = ArticleEdition {newTag = "", ..}
+toArticleEdition Article {..} = ArticleEdition {newTag = "", composingTag = False, ..}
 
 data EditedArticle = EditedArticle
   { original :: !Article
@@ -134,6 +135,8 @@ data Action
   | DeleteEditingTag !MisoString
   | AddEditingTag
   | SetNewTagName !MisoString
+  | EditArticleStartComposingTag
+  | EditArticleFinishComposingTag
   | SaveEditingArticle
   | OpenTagArticles !T.Text !(Maybe Word)
   | ShowTagArticles !T.Text !Word ![Article]

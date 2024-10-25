@@ -86,13 +86,17 @@ updateModel (SetEditingArticleContent f) m =
   noEff $ m & #mode . #_EditingArticle . #edition . #body .~ f
 updateModel (DeleteEditingTag f) m =
   noEff $ m & #mode . #_EditingArticle . #edition . #tags %~ L.delete f
+updateModel EditArticleStartComposingTag m =
+  noEff $ m & #mode . #_EditingArticle . #edition . #composingTag .~ True
+updateModel EditArticleFinishComposingTag m =
+  noEff $ m & #mode . #_EditingArticle . #edition . #composingTag .~ False
 updateModel AddEditingTag m =
   noEff $
     m
       & #mode . #_EditingArticle . #edition %~ \e ->
         if MisoString.null e.newTag
           then e
-          else e {tags = e.newTag : e.tags, newTag = ""}
+          else e {tags = e.tags ++ [e.newTag], newTag = ""}
 updateModel SaveEditingArticle m =
   m {mode = Idle}
     `batchEff` [ do
@@ -114,15 +118,17 @@ updateModel SaveEditingArticle m =
                     Right NoContent -> pure $ openArticle original.slug
                | EditedArticle {..} <- m ^.. #mode . #_EditingArticle
                ]
-updateModel (SetNewTagName f) m =
-  noEff $ m & #mode . #_EditingArticle . #edition . #newTag .~ f
+updateModel (SetNewTagName f) m
+  | maybe False not (m.mode ^? #_EditingArticle . #edition . #composingTag) =
+      noEff $ m & #mode . #_EditingArticle . #edition . #newTag .~ f
+  | otherwise = noEff m
 updateModel NewArticle m =
   noEff
     m
       { mode =
           CreatingArticle
             ""
-            ArticleEdition {body = mempty, tags = mempty, newTag = ""}
+            ArticleEdition {body = mempty, tags = mempty, newTag = "", composingTag = False}
       }
 updateModel (OpenTagArticles tag mcur) m =
   m <# do
@@ -150,9 +156,7 @@ updateModel (ShowErrorPage title message) m =
 
 withArticleSlug :: T.Text -> (Article -> JSM Action) -> JSM Action
 withArticleSlug slug k = do
-  consoleLog $ "Retrieving article: " <> toMisoString slug
   eith <- tryAny $ callApi (api.getArticle slug)
-  consoleLog $ "Requested: " <> toMisoString (show eith)
   case eith of
     Left (fromException -> Just (FailureResponse _req resp))
       | resp.responseStatusCode == status404 -> do

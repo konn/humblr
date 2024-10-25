@@ -140,11 +140,17 @@ editMainView Edit art =
             btnAttrs = btnCls : [onClick AddEditingTag | validTagName]
             inputAttrs =
               class_ "input"
+                : id_ "new-tag-input"
+                : onChange (SetNewTagName . MS.strip)
                 : onInput (SetNewTagName . MS.strip)
-                : mconcat
-                  [ [onEnter AddEditingTag]
-                  | validTagName
+                : on "compositionstart" emptyDecoder (const EditArticleStartComposingTag)
+                : on "compositionend" emptyDecoder (const EditArticleStartComposingTag)
+                : [ value_ art.edition.newTag
+                  | not art.edition.composingTag
                   ]
+                ++ [ onEnter AddEditingTag
+                   | validTagName
+                   ]
          in div_
               [class_ "field has-addons"]
               [ label_ [class_ "label"] ["New Tag"]
