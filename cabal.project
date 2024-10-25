@@ -1,5 +1,5 @@
 import: cabal-common.project
+packages: */*.cabal
+optimization: 2
 multi-repl: True
 semaphore: True
-optimization: 2
-packages: */*.cabal

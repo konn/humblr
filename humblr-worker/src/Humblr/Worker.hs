@@ -23,18 +23,14 @@ import Control.Monad
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as A
 import Data.Aeson qualified as J
-import Data.ByteString.Lazy qualified as LBS
-import Data.ByteString.Lazy.Char8 qualified as LBS8
+import Data.ByteString.Char8 qualified as BS8
 import Data.Coerce (coerce)
 import Data.Either (partitionEithers)
 import Data.Functor ((<&>))
-import Data.Generics.Labels ()
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.String (fromString)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Data.Text.Lazy qualified as LT
-import Data.Text.Lazy.Encoding qualified as LTE
 import Data.Time (UTCTime, getCurrentTime)
 import Data.Vector qualified as V
 import GHC.Generics (Generic)
@@ -164,9 +160,9 @@ putArticle user slug upd = protectIfConfigured user do
   tagArticleQ <- mkTagArticleQ
   lookSlugQ <- mkLookupSlugQ
   art <-
-    either (\e -> serverError err500 {errBody = "Schema Error (article): " <> LBS8.pack e}) (pure . (.id))
+    either (\e -> serverError err500 {errBody = "Schema Error (article): " <> BS8.pack e}) (pure . (.id))
       . D1.parseD1RowView @ArticleRow
-      =<< maybe (serverError err404 {errBody = "Article not found: " <> LBS.fromStrict (TE.encodeUtf8 slug)}) (pure)
+      =<< maybe (serverError err404 {errBody = "Article not found: " <> TE.encodeUtf8 slug}) (pure)
       =<< liftIO . (wait <=< D1.first)
       =<< bind lookSlugQ slug
   -- FIXME: make these two together with @art@ into a single batch.
@@ -209,7 +205,7 @@ postArticle :: AuthResult User -> ArticleSeed -> App NoContent
 postArticle user art = protectIfConfigured user do
   tryAny (createArticle art) >>= \case
     Left e ->
-      serverError err409 {errBody = "Failed to create article: " <> LTE.encodeUtf8 (LT.pack $ displayException e)}
+      serverError err409 {errBody = "Failed to create article: " <> fromString (displayException e)}
     Right () -> pure NoContent
 
 listTags :: App [T.Text]
@@ -232,7 +228,7 @@ getArticle slug = do
       }
   maybe
     ( serverError
-        err404 {errBody = "Article Not Found: " <> LBS.fromStrict (TE.encodeUtf8 slug)}
+        err404 {errBody = "Article Not Found: " <> TE.encodeUtf8 slug}
     )
     pure
     =<< lookupSlug slug
@@ -387,7 +383,7 @@ createArticle ArticleSeed {..} = do
         =<< D1.batch d1 (V.fromList $ newArt : tagQs ++ tagIdsQ ++ [artIdQ])
   unless (V.all (.success) vs) $
     serverError $
-      err409 {errBody = "Failed to insert article: " <> LBS.fromStrict (TE.encodeUtf8 slug)}
+      err409 {errBody = "Failed to insert article: " <> TE.encodeUtf8 slug}
   let (_, rest) = V.splitAt (length tags) $ V.drop 1 vs
       (rawTagIds, V.head -> rawArtId) = V.splitAt (length tags) rest
       tagIds = V.mapMaybe (either (const Nothing) (Just . (.id)) . D1.parseD1RowView @TagRow) $ V.concatMap (.results) rawTagIds
