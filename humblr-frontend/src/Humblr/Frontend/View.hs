@@ -64,7 +64,12 @@ mainView m = case m.mode of
   ArticlePage art -> articleView FrontEndArticle art
   EditingArticle edit -> editView edit
   CreatingArticle newArticle -> newArticleView newArticle
-  TagArticles tag cur arts -> []
+  TagArticles tagArticles ->
+    articlesList
+      [ "Articles tagged with "
+      , span_ [class_ "tag is-large"] [text tagArticles.tag]
+      ]
+      tagArticles.articles
   ErrorPage MkErrorPage {..} ->
     [ h2_ [class_ "title"] [text title]
     , p_ [class_ "content"] [text message]
@@ -237,23 +242,24 @@ linkToTag FrontEndArticle tag = a_ [onClick $ openTagArticles tag Nothing]
 linkToTag PreviewArticle _ = a_ []
 
 topPageView :: TopPage -> [View Action]
-topPageView MkTopPage {..} =
+topPageView MkTopPage {..} = articlesList ["Recent Articles"] articles
+
+articlesList :: [View Action] -> PagedArticles -> [View Action]
+articlesList title PagedArticles {..} =
   [ h2_
       [class_ "title"]
-      [ "Recent Articles ("
-      , fromString $ show $ page * 10 + 1
-      , "-"
-      , fromString $ show $ page * 10 + fromIntegral (length articles)
-      , ")"
-      ]
+      $ title
+        <> [ " ("
+           , fromString $ show $ page * 10 + 1
+           , "-"
+           , fromString $ show $ page * 10 + fromIntegral (length articles)
+           , ")"
+           ]
   , p_
       [class_ "content"]
       [ div_
-          [class_ "fixed-grid has-1-cols-mobile has-3-cols-tablet has-4-cols"]
-          [ div_
-              [class_ "grid"]
-              [div_ [class_ "cell"] (map articleOverview $ toList articles)]
-          ]
+          [class_ "grid"]
+          [div_ [class_ "cell"] (map articleOverview $ toList articles)]
       ]
   ]
 

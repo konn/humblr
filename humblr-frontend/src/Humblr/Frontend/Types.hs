@@ -34,6 +34,8 @@ module Humblr.Frontend.Types (
   EditViewState (..),
   EditedArticle (..),
   NewArticle (..),
+  TagArticles (..),
+  PagedArticles (..),
   toArticleEdition,
   toArticleUpdate,
   Action (..),
@@ -82,9 +84,21 @@ data Mode
   | ArticlePage !Article
   | EditingArticle !EditedArticle
   | CreatingArticle !NewArticle
-  | TagArticles !T.Text !Word ![Article]
+  | TagArticles !TagArticles
   | ErrorPage !ErrorPage
   | Idle
+  deriving (Show, Generic, Eq)
+
+data TagArticles = MkTagArticles
+  { tag :: !T.Text
+  , articles :: {-# UNPACK #-} !PagedArticles
+  }
+  deriving (Show, Generic, Eq)
+
+data PagedArticles = PagedArticles
+  { page :: !Word
+  , articles :: ![Article]
+  }
   deriving (Show, Generic, Eq)
 
 data NewArticle = MkNewArticle
@@ -125,7 +139,7 @@ data EditedArticle = EditedArticle
 data EditViewState = Edit | Preview
   deriving (Show, Eq, Generic)
 
-data TopPage = MkTopPage {page :: !Word, articles :: ![Article]}
+newtype TopPage = MkTopPage {articles :: PagedArticles}
   deriving (Show, Generic, Eq)
 
 data ErrorPage = MkErrorPage
@@ -162,7 +176,7 @@ data Action
   | SetNewTagName !MisoString
   | SaveEditingArticle
   | OpenTagArticles !T.Text !(Maybe Word)
-  | ShowTagArticles !T.Text !Word ![Article]
+  | ShowTagArticles !T.Text !PagedArticles
   | ShowErrorNotification !ErrorMessage !(Maybe Mode)
   | DismissError
   | ShowErrorPage !MisoString !MisoString

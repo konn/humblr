@@ -78,7 +78,10 @@ updateModel (OpenTopPage mcur) m =
               , message = toMisoString $ displayException err
               }
             Nothing
-      Right articles -> pure $ ShowTopPage MkTopPage {page = fromMaybe 0 mcur, ..}
+      Right articles ->
+        pure $
+          ShowTopPage $
+            MkTopPage PagedArticles {page = fromMaybe 0 mcur, ..}
 updateModel (ShowTopPage topPage) m = noEff m {mode = TopPage topPage}
 updateModel (OpenArticle slug) m =
   m <# do
@@ -189,9 +192,13 @@ updateModel (OpenTagArticles tag mcur) m =
               , message = "Tag retrieve failed: " <> toMisoString (displayException err)
               }
             Nothing
-      Right arts -> pure $ ShowTagArticles tag (fromMaybe 0 mcur) arts
-updateModel (ShowTagArticles tag cur arts) m =
-  noEff m {mode = TagArticles tag cur arts}
+      Right articles ->
+        pure $
+          ShowTagArticles
+            tag
+            PagedArticles {page = fromMaybe 0 mcur, ..}
+updateModel (ShowTagArticles tag articles) m =
+  noEff m {mode = TagArticles MkTagArticles {..}}
 updateModel (ShowErrorNotification msg mstate) m =
   noEff $
     m
