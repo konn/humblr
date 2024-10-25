@@ -151,7 +151,7 @@ editMainView Edit art =
                   ]
               , div_
                   [class_ "control"]
-                  [button_ btnAttrs [icon "plus"]]
+                  [button_ btnAttrs [icon "add"]]
               ]
       , div_ [class_ "field is-grouped is-grouped-multiline"] $
           [ div_
