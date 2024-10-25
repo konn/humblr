@@ -20,6 +20,7 @@
 
 module Humblr.Frontend.View (viewModel) where
 
+import Data.Bool (bool)
 import Data.Char qualified as C
 import Data.Foldable (toList)
 import Data.Generics.Labels ()
@@ -90,16 +91,8 @@ editView ea@EditedArticle {..} =
           [class_ "box"]
           $ editMainView viewState ea
       , div_
-          [class_ "field is-grouped"]
-          [ div_
-              [class_ "control"]
-              [ button_
-                  [ class_ "button is-primary"
-                  , onClick SaveEditingArticle
-                  ]
-                  ["Submit"]
-              ]
-          , -- TODO: Confirm before cancel
+          [class_ "field is-grouped is-grouped-right"]
+          [ -- TODO: Confirm before cancel
             div_
               [class_ "control"]
               [ button_
@@ -107,6 +100,14 @@ editView ea@EditedArticle {..} =
                   , onClick $ openArticle original.slug
                   ]
                   ["Cancel"]
+              ]
+          , div_
+              [class_ "control"]
+              [ button_
+                  [ class_ "button is-primary"
+                  , onClick SaveEditingArticle
+                  ]
+                  ["Submit"]
               ]
           ]
       ]
@@ -132,22 +133,25 @@ editMainView Edit art =
                   [text art.edition.body]
               ]
           ]
-      , let disabled = not validTagName
-            btnCls =
+      , let btnCls =
               class_ $
                 MS.unwords $
-                  "button" : if disabled then ["is-link is-light"] else ["is-link"]
-            btnAttrs = btnCls : [onClick AddEditingTag | not disabled]
+                  "button" : if validTagName then ["is-link"] else ["is-link is-light is-static"]
+            btnAttrs = btnCls : [onClick AddEditingTag | validTagName]
+            inputAttrs =
+              class_ "input"
+                : onInput (SetNewTagName . MS.strip)
+                : mconcat
+                  [ [onEnter AddEditingTag]
+                  | validTagName
+                  ]
          in div_
-              [class_ "field is-grouped"]
-              [ label_ [class_ "label"] ["New Tags"]
+              [class_ "field has-addons"]
+              [ label_ [class_ "label"] ["New Tag"]
               , div_
                   [class_ "control has-icons-left"]
-                  [ div_
-                      [class_ "input", onInput $ SetNewTagName . MS.strip]
-                      [ input_ [class_ "input"]
-                      , iconLeft "sell"
-                      ]
+                  [ input_ inputAttrs
+                  , iconLeft "sell"
                   ]
               , div_
                   [class_ "control"]
@@ -193,9 +197,16 @@ articleView mode Article {..} =
           FrontEndArticle -> a_ [onClick $ openArticle slug]
           PreviewArticle -> a_ []
       tagsView =
-        div_
-          [class_ "tags"]
-          [span_ [class_ "tag"] [linkToTag mode tag [text tag] | tag <- tags]]
+        div_ [class_ "field is-grouped is-grouped-multiline"] $
+          [ div_
+              [class_ "control"]
+              [ div_
+                  [class_ "tags"]
+                  [ span_ [class_ "tag"] [linkToTag FrontEndArticle tag [text tag]]
+                  ]
+              ]
+          | tag <- tags
+          ]
    in [ div_
           [class_ "box is-four-fifth"]
           [ div_
@@ -323,6 +334,9 @@ iconLeft name =
         ]
         [text name]
     ]
+
+onEnter :: Action -> Attribute Action
+onEnter action = onKeyDown $ bool NoOp action . (== KeyCode 13)
 
 {-
 
