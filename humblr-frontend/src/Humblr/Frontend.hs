@@ -24,7 +24,7 @@ import Data.Generics.Labels ()
 import Humblr.Frontend.Actions
 import Humblr.Frontend.Types
 import Humblr.Frontend.View (viewModel)
-import qualified Language.Javascript.JSaddle.Runner as Runner
+import Language.Javascript.JSaddle.Runner qualified as Runner
 import Miso
 import Servant.Auth.Client ()
 

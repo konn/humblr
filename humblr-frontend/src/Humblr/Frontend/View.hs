@@ -25,6 +25,7 @@ import Data.Generics.Labels ()
 import Data.Maybe (fromMaybe, maybeToList)
 import Data.String (fromString)
 import Data.Time (defaultTimeLocale, formatTime)
+import GHC.IsList qualified as G
 import Humblr.CMark qualified as CM
 import Humblr.Frontend.Actions
 import Humblr.Frontend.Types
@@ -39,7 +40,7 @@ viewModel m@Model {..} =
     $ headerView m
       : mainView m
       ++ [ div_
-            [class_ "notification is-danger"]
+            [class_ "notification is-danger", style_ $ G.fromList [("position", "absolute"), ("bottom", "12pt")]]
             [ button_ [class_ "delete", onClick DismissError] []
             , h3_ [class_ "subtitle"] [text title]
             , text message

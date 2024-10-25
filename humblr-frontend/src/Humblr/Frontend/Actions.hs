@@ -25,8 +25,10 @@ module Humblr.Frontend.Actions (
   openTagArticles,
 ) where
 
+import Control.Concurrent (threadDelay)
 import Control.Exception.Safe (Exception (..), tryAny)
 import Control.Lens
+import Control.Monad.IO.Class (liftIO)
 import Data.Generics.Labels ()
 import Data.List qualified as L
 import Data.Maybe (fromMaybe)
@@ -41,6 +43,7 @@ import Servant.Auth.Client (Token (CloudflareToken))
 import Servant.Client.FetchAPI
 
 updateModel :: Action -> Model -> Effect Action Model
+updateModel NoOp m = noEff m
 updateModel (ChangeUrl url) m =
   m <# do
     pushURI url
@@ -61,7 +64,9 @@ updateModel (OpenTopPage mcur) m =
       Right articles -> pure $ ShowTopPage MkTopPage {page = fromMaybe 0 mcur, ..}
 updateModel (ShowTopPage topPage) m = noEff m {mode = TopPage topPage}
 updateModel (OpenArticle slug) m =
-  m <# withArticleSlug slug (pure . ShowArticle)
+  m <# do
+    consoleLog $ "Opening article: " <> toMisoString slug
+    withArticleSlug slug (pure . ShowArticle)
 updateModel (ShowArticle article) m = noEff m {mode = ArticlePage article}
 updateModel (OpenEditArticle slug) m =
   m <# withArticleSlug slug (pure . ShowEditArticle)
@@ -102,7 +107,9 @@ updateModel SaveEditingArticle m =
                             , message = toMisoString $ displayException err
                             }
                           (Just m.mode)
-                    Right NoContent -> pure $ openArticle original.slug
+                    Right NoContent -> do
+                      liftIO $ threadDelay 500_000
+                      pure NoOp
                | EditedArticle {..} <- m ^.. #mode . #_EditingArticle
                ]
 updateModel NewArticle m =
@@ -142,19 +149,24 @@ toArticleSeed art = ArticleUpdate {body = toMisoString art.body, tags = art.tags
 
 withArticleSlug :: T.Text -> (Article -> JSM Action) -> JSM Action
 withArticleSlug slug k = do
+  consoleLog $ "Retrieving article: " <> toMisoString slug
   eith <- tryAny $ callApi (api.getArticle slug)
+  consoleLog $ "Requested: " <> toMisoString (show eith)
   case eith of
     Left (fromException -> Just (FailureResponse _req resp))
-      | resp.responseStatusCode == status404 ->
+      | resp.responseStatusCode == status404 -> do
+          consoleLog $ "404!"
           pure $ ShowErrorPage "Not Found" $ "The article " <> toMisoString slug <> " was not found."
-      | otherwise ->
+      | otherwise -> do
+          consoleLog $ "ISE (non-404)"
           pure $
             ShowErrorPage "Internal Server Error" $
               "Failed to retrieve the article "
                 <> toMisoString slug
                 <> ": "
                 <> toMisoString (show resp.responseStatusCode)
-    Left err ->
+    Left err -> do
+      consoleLog $ "Non-client error"
       pure $
         ShowErrorPage "Internal Server Error" $
           toMisoString $
@@ -163,7 +175,7 @@ withArticleSlug slug k = do
 
 handleUrl :: URI -> Model -> Effect Action Model
 handleUrl url =
-  either (\_ m -> m <# pure (OpenTopPage Nothing)) id $
+  either (\_ m -> m <# pure (openTopPage Nothing)) id $
     route @(ToServantApi FrontendRoutes)
       Proxy
       (toServant routes)

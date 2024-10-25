@@ -13,7 +13,9 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeData #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UnliftedDatatypes #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE NoFieldSelectors #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
@@ -42,6 +44,7 @@ import Data.Kind (Type)
 import Data.Text qualified as T
 import GHC.Generics (Generic)
 import Humblr.Types
+import Language.Javascript.JSaddle
 import Miso
 import Miso.String (MisoString)
 import Servant.API
@@ -120,6 +123,7 @@ data Action
   | ShowErrorNotification !ErrorMessage !(Maybe Mode)
   | DismissError
   | ShowErrorPage !MisoString !MisoString
+  | NoOp
   deriving (Show, Generic)
 
 api :: RestApi (AsClientT (FetchT JSM))
