@@ -101,11 +101,11 @@ data ArticleUpdate = ArticleUpdate {body :: T.Text, tags :: [T.Text]}
   deriving anyclass (FromJSON, ToJSON)
 
 data FrontendRoutes mode = FrontendRoutes
-  { topPage :: mode :- QueryParam "page" Word :> Raw
-  , articlePage :: mode :- "articles" :> Capture "slug" T.Text :> Raw
+  { articlePage :: mode :- "articles" :> Capture "slug" T.Text :> Raw
   , editArticle :: mode :- "admin" :> "edit" :> Capture "slug" T.Text :> Raw
   , newArticle :: mode :- "admin" :> "new" :> Raw
   , tagArticles :: mode :- "tags" :> Capture "tag" T.Text :> QueryParam "page" Word :> Raw
+  , topPage :: mode :- QueryParam "page" Word :> Raw
   }
   deriving (Generic)
 
