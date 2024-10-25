@@ -10,7 +10,6 @@
 
 module Humblr.Types (
   Article (..),
-  ArticleSummary (..),
   ArticleSeed (..),
   ArticleUpdate (..),
 
@@ -22,48 +21,22 @@ module Humblr.Types (
   AdminAPI (..),
   FrontendRoutes (..),
   RequireUser,
-  HTML,
 ) where
 
 import Control.Lens
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Aeson qualified as J
-import Data.ByteString qualified as BS
-import Data.ByteString.Lazy qualified as LBS
 import Data.Generics.Labels ()
-import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Time (UTCTime)
 import GHC.Generics (Generic)
-import Network.HTTP.Media qualified as M
 import Servant.API
 import Servant.Auth
 import Servant.Auth.JWT
 import Servant.Links
 
 type RequireUser = Auth '[CloudflareZeroTrust, JWT] User
-
-data HTML
-
-instance Accept HTML where
-  contentTypes _ =
-    "text"
-      M.// "html"
-      M./: ("charset", "utf-8")
-      NE.:| ["text" M.// "html"]
-
-instance MimeRender HTML LBS.ByteString where
-  mimeRender _ = id
-
-instance MimeUnrender HTML LBS.ByteString where
-  mimeUnrender _ = Right
-
-instance MimeRender HTML BS.ByteString where
-  mimeRender _ = LBS.fromStrict
-
-instance MimeUnrender HTML BS.ByteString where
-  mimeUnrender _ = Right . LBS.toStrict
 
 rootApiLinks :: RootAPI (AsLink Link)
 rootApiLinks = allFieldLinks
@@ -115,7 +88,6 @@ data AdminAPI mode = AdminAPI
       mode :- "articles" :> RequireUser :> Capture "slug" T.Text :> ReqBody '[JSON] ArticleUpdate :> Put '[JSON] NoContent
   , deleteArticle ::
       mode :- "articles" :> RequireUser :> Capture "slug" T.Text :> Delete '[JSON] NoContent
-  , listTags :: mode :- "tags" :> Get '[JSON] [T.Text]
   , listTagArticles :: mode :- "tags" :> Capture "tag" T.Text :> QueryParam "page" Word :> Get '[JSON] [Article]
   }
   deriving (Generic)
@@ -149,13 +121,4 @@ data Article = Article
   , tags :: ![T.Text]
   }
   deriving stock (Eq, Generic, Show)
-  deriving anyclass (FromJSON, ToJSON)
-
-data ArticleSummary = ArticleSummary
-  { body :: !T.Text
-  , slug :: !T.Text
-  , updatedAt :: !UTCTime
-  , createdAt :: !UTCTime
-  }
-  deriving stock (Generic, Show)
   deriving anyclass (FromJSON, ToJSON)

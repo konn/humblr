@@ -27,7 +27,7 @@ import Data.ByteString.Char8 qualified as BS8
 import Data.Coerce (coerce)
 import Data.Either (partitionEithers)
 import Data.Functor ((<&>))
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe)
 import Data.String (fromString)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -146,7 +146,6 @@ apiRoutes =
   AdminAPI
     { putArticle = putArticle
     , postArticle = postArticle
-    , listTags = listTags
     , listTagArticles = listTagArticles
     , listArticles = listArticles
     , getArticle = getArticle
@@ -208,16 +207,6 @@ postArticle user art = protectIfConfigured user do
       serverError err409 {errBody = "Failed to create article: " <> fromString (displayException e)}
     Right () -> pure NoContent
 
-listTags :: App [T.Text]
-listTags = do
-  serveCached
-    CacheOptions
-      { cacheTTL = 3600 * 8
-      , onlyOk = True
-      , includeQuery = True
-      }
-  listAllTags
-
 getArticle :: T.Text -> App Article
 getArticle slug = do
   serveCached
@@ -276,17 +265,6 @@ newtype Preparation params = Preparation (params ~> App D1.Statement)
 
 bind :: forall params. Preparation params -> params ~> App D1.Statement
 bind (Preparation f) = f
-
-listAllTags :: App [T.Text]
-listAllTags = do
-  qry <- prepare "SELECT * FROM tags"
-  tags <- liftIO $ wait =<< D1.all =<< D1.bind qry mempty
-  pure
-    $ mapMaybe
-      ( either (const Nothing) (Just . (.name))
-          . D1.parseD1RowView @TagRow
-      )
-    $ V.toList tags.results
 
 getRecentArticles ::
   Maybe Word32 ->
@@ -475,9 +453,7 @@ fromArticleRow arow = do
   unless rows.success $
     throwString "Failed to fetch tags for article"
   let (fails, tags) = partitionEithers $ map (fmap getTagName . D1.parseD1RowView) $ V.toList rows.results
-  unless (null fails) $
-    throwString $
-      "Failed to parse tag row: " <> show fails
+  unless (null fails) $ throwString $ "Failed to parse tag row: " <> show fails
   pure
     Article
       { body = arow.body

@@ -44,11 +44,9 @@ library
   import: defaults
   build-depends:
     aeson,
-    bytestring,
     cmark,
     containers,
     generic-lens,
-    http-media,
     lens,
     servant,
     servant-auth-lite,

@@ -18,7 +18,7 @@ import CMark
 import Control.Lens
 import Data.Foldable (fold)
 import Data.Generics.Labels ()
-import qualified Data.Text as T
+import Data.Text qualified as T
 
 instance Plated Node where
   plate :: Traversal' Node Node
