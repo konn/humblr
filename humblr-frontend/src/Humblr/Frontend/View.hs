@@ -112,16 +112,22 @@ generalEditView ea =
                   ]
               ]
           , div_ [class_ "box"] $
-              [ div_ [class_ "field is-grouped"] $
-                  [ label_ [class_ "label"] ["Slug"]
+              [ div_ [class_ "field is-horizontal"] $
+                  [ div_ [class_ "field-label"] [label_ [class_ "label"] ["Slug"]]
                   , div_
-                      [class_ "control  has-icons-left"]
-                      [ input_
-                          [ class_ "input"
-                          , type_ "input"
-                          , onInput $ SetEditedSlug . MS.strip
+                      [class_ "field-body"]
+                      [ div_
+                          [class_ "field"]
+                          [ div_
+                              [class_ "control  has-icons-left"]
+                              [ input_
+                                  [ class_ "input"
+                                  , type_ "input"
+                                  , onInput $ SetEditedSlug . MS.strip
+                                  ]
+                              , iconLeft "link"
+                              ]
                           ]
-                      , iconLeft "link"
                       ]
                   ]
               | DynamicSlug {} <- [slugMode @state]
@@ -164,15 +170,24 @@ editMainView Edit art =
         not (MS.null newTag)
           && MS.all (not . C.isSpace) newTag
    in [ div_
-          [class_ "field"]
+          [class_ "field is-horizontal"]
           [ div_
-              [class_ "control"]
-              [ textarea_
-                  [ class_ "textarea is-large"
-                  , rows_ "5"
-                  , onInput SetEditingArticleContent
+              [class_ "field-label"]
+              [label_ [class_ "label"] ["Body"]]
+          , div_
+              [class_ "field-body"]
+              [ div_
+                  [class_ "field"]
+                  [ div_
+                      [class_ "control"]
+                      [ textarea_
+                          [ class_ "textarea is-large"
+                          , rows_ "5"
+                          , onInput SetEditingArticleContent
+                          ]
+                          [text $ art ^. bodyL]
+                      ]
                   ]
-                  [text $ art ^. bodyL]
               ]
           ]
       , let btnCls =
@@ -196,31 +211,40 @@ editMainView Edit art =
                   | validTagName
                   ]
          in div_
-              [class_ "field has-addons"]
-              [ label_ [class_ "label"] ["New Tag"]
+              [class_ "field is-horizontal"]
+              [ div_ [class_ "field-label"] [label_ [class_ "label"] ["New Tag"]]
               , div_
-                  [class_ "control has-icons-left"]
-                  [ input_ inputAttrs
-                  , iconLeft "sell"
-                  ]
-              , div_
-                  [class_ "control"]
-                  [button_ btnAttrs [icon "add"]]
-              ]
-      , div_ [class_ "field is-grouped is-grouped-multiline"] $
-          [ div_
-              [class_ "control"]
-              [ div_
-                  [class_ "tags has-addons"]
-                  [ a_ [class_ "tag"] [text tag]
-                  , a_
-                      [ class_ "tag is-delete"
-                      , onClick $ DeleteEditingTag tag
+                  [class_ "field-body"]
+                  [ div_
+                      [class_ "field has-addons"]
+                      [ div_
+                          [class_ "control has-icons-left"]
+                          [ input_ inputAttrs
+                          , iconLeft "sell"
+                          ]
+                      , div_
+                          [class_ "control"]
+                          [button_ btnAttrs [icon "add"]]
                       ]
-                      []
                   ]
               ]
-          | tag <- F.toList $ art ^. tagsL
+      , div_ [class_ "field is-horizontal"] $
+          [ div_ [class_ "field-label"] [label_ [class_ "label"] ["Tags"]]
+          , div_
+              [class_ "field-body"]
+              [ div_
+                  [class_ "field is-grouped is-grouped-multiline"]
+                  [ div_
+                      [class_ "control"]
+                      [ div_
+                          [class_ "tags has-addons"]
+                          [ a_ [class_ "tag"] [text tag]
+                          , a_ [class_ "tag is-delete", onClick $ DeleteEditingTag tag] []
+                          ]
+                      ]
+                  | tag <- F.toList $ art ^. tagsL
+                  ]
+              ]
           ]
       ]
 editMainView Preview art =
@@ -290,7 +314,7 @@ articlesList title PagedArticles {..} =
   , p_
       [class_ "content"]
       [ div_
-          [class_ "grid"]
+          [class_ "grid is-col-min-8"]
           $ map (div_ [class_ "cell"] . pure . articleOverview)
           $ toList articles
       ]
