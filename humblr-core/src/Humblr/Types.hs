@@ -12,8 +12,6 @@ module Humblr.Types (
   Article (..),
   ArticleSeed (..),
   ArticleUpdate (..),
-  Cursored (..),
-  isFinished,
 
   -- * APIs
   User (..),
@@ -33,7 +31,6 @@ import Data.Generics.Labels ()
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Time (UTCTime)
-import Data.Vector qualified as V
 import GHC.Generics (Generic)
 import Servant.API
 import Servant.Auth
@@ -78,17 +75,6 @@ instance FromJWT User where
 eitherResult :: J.Result a -> Either T.Text a
 eitherResult (J.Success a) = Right a
 eitherResult (J.Error e) = Left $ T.pack e
-
-data Cursored a = Cursored
-  { items :: !(V.Vector a)
-  , total :: !Word
-  , start :: !Word
-  }
-  deriving (Show, Eq, Ord, Generic, Functor, Foldable, Traversable)
-  deriving anyclass (FromJSON, ToJSON)
-
-isFinished :: Cursored a -> Bool
-isFinished Cursored {..} = start + fromIntegral (V.length items) >= total
 
 data RestApi mode = RestApi
   { listArticles ::
