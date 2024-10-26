@@ -368,9 +368,10 @@ createArticle ArticleSeed {..} = do
         either (error "Failed to parse article") (.id) $
           D1.parseD1RowView @ArticleIdRow $
             V.head rawArtId.results
-  void $
-    liftIO . D1.batch d1
-      =<< mapM (bind tagArtQ artId) tagIds
+  unless (null tagIds) $
+    void $
+      liftIO . D1.batch d1
+        =<< mapM (bind tagArtQ artId) tagIds
 
 newtype ArticleIdRow = ArticleIdRow {id :: ArticleId}
   deriving (Show, Eq, Ord, Generic)
