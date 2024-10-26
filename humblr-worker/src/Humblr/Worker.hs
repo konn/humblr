@@ -242,10 +242,6 @@ data TagRow = TagRow {id :: !TagId, name :: !T.Text}
   deriving (Show, Eq, Ord, Generic)
   deriving anyclass (FromD1Row, ToD1Row)
 
-data ArticleTagRow = ArticleTagRow {id :: !Word32, article :: !ArticleId, tag :: !TagId}
-  deriving (Show, Eq, Ord, Generic)
-  deriving anyclass (FromD1Row, ToD1Row)
-
 data ArticleRow = ArticleRow
   { id :: !ArticleId
   , body :: !T.Text
@@ -438,10 +434,6 @@ getArticlesWithTag tag mpage = do
     throwString $
       "Failed to parse article row: " <> show fails
   mapM fromArticleRow articles
-
-data AppException = AppException !T.Text
-  deriving (Show, Eq, Ord, Generic)
-  deriving anyclass (Exception)
 
 newtype TagName = TagName {name :: T.Text}
   deriving (Show, Eq, Ord, Generic)
