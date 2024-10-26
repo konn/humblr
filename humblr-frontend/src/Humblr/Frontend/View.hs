@@ -22,7 +22,7 @@
 
 module Humblr.Frontend.View (viewModel) where
 
-import Control.Lens (runLens, (^.))
+import Control.Lens ((^.))
 import Data.Bool (bool)
 import Data.Char qualified as C
 import Data.Foldable (toList)
@@ -92,6 +92,7 @@ generalEditView ea =
         not (MS.null curSlug)
           && MS.isAscii curSlug
           && MS.all (\c -> C.isAlphaNum c || c == '-' || c == '_') curSlug
+          && not (MS.null $ ea ^. bodyL)
    in [ div_
           [class_ "content"]
           [ div_
@@ -111,20 +112,19 @@ generalEditView ea =
                   ]
               ]
           , div_ [class_ "box"] $
-              [ div_ [class_ "field"] $
+              [ div_ [class_ "field is-grouped"] $
                   [ label_ [class_ "label"] ["Slug"]
                   , div_
                       [class_ "control  has-icons-left"]
                       [ input_
                           [ class_ "input"
                           , type_ "input"
-                          , value_ $ ea ^. runLens slgL
                           , onInput $ SetEditedSlug . MS.strip
                           ]
                       , iconLeft "link"
                       ]
                   ]
-              | DynamicSlug slgL <- [slugMode @state]
+              | DynamicSlug {} <- [slugMode @state]
               ]
                 <> editMainView (ea ^. viewStateL) ea
           , div_
@@ -163,7 +163,6 @@ editMainView Edit art =
       validTagName =
         not (MS.null newTag)
           && MS.all (not . C.isSpace) newTag
-          && not (MS.null $ art ^. bodyL)
    in [ div_
           [class_ "field"]
           [ div_
@@ -187,7 +186,7 @@ editMainView Edit art =
               if validTagName
                 then onClick AddEditingTag
                 else disabled_ True
-            btnAttrs = [btnCls, btnAction]
+            btnAttrs = [btnCls, btnAction, onInput $ SetNewTagName . MS.strip]
             inputAttrs =
               class_ "input"
                 : id_ newTagInputId
@@ -292,7 +291,8 @@ articlesList title PagedArticles {..} =
       [class_ "content"]
       [ div_
           [class_ "grid"]
-          [div_ [class_ "cell"] $ map articleOverview $ toList articles]
+          $ map (div_ [class_ "cell"] . pure . articleOverview)
+          $ toList articles
       ]
   ]
 
