@@ -314,7 +314,7 @@ articlesList title PagedArticles {..} =
   , p_
       [class_ "content"]
       [ div_
-          [class_ "grid is-col-min-8"]
+          [class_ "grid is-col-min-10"]
           $ map (div_ [class_ "cell"] . pure . articleOverview)
           $ toList articles
       ]
