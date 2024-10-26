@@ -3,8 +3,8 @@ with-compiler: wasm32-wasi-9.10.1
 import: cabal-common.project
 active-repositories: hackage.haskell.org
 optimization: 2
-semaphore: True
 jobs: $ncpus
+semaphore: True
 
 source-repository-package
   type: git
