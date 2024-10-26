@@ -259,7 +259,7 @@ type family xs ~> a where
 newtype Preparation params = Preparation (params ~> App D1.Statement)
 
 bind :: forall params. Preparation params -> params ~> App D1.Statement
-bind (Preparation f) = f
+bind = coerce
 
 getRecentArticles ::
   Maybe Word32 ->
