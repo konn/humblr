@@ -14,6 +14,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RequiredTypeArguments #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -25,7 +26,10 @@ module Humblr.Frontend.Actions (
   openEndpoint,
   openTopPage,
   openArticle,
+  openAdminPage,
+  openEditArticle,
   openTagArticles,
+  openNewArticle,
   HasEditView (..),
   saveAction,
   slugG,
@@ -35,6 +39,9 @@ module Humblr.Frontend.Actions (
   newTagT,
   SlugMode (..),
   slugL,
+  HasArticles (..),
+  articleAction,
+  articlesT,
 ) where
 
 import Control.Exception.Safe (Exception (..), tryAny)
@@ -69,27 +76,16 @@ updateModel (ChangeUrl url) m =
     pushURI url
     pure (HandleUrl url)
 updateModel (HandleUrl url) m = handleUrl url m
+updateModel (OpenAdminPage mcur) m =
+  m <# do
+    withArticles mcur $ pure . ShowAdminPage . MkAdminPage
+updateModel (ShowAdminPage adminPage) m = noEff m {mode = AdminPage adminPage}
 updateModel (OpenTopPage mcur) m =
   m <# do
-    eith <- tryAny $ callApi (api.listArticles mcur)
-    case eith of
-      Left err ->
-        pure $
-          ShowErrorNotification
-            MkErrorMessage
-              { title = "Could not Retrieve Articles!"
-              , message = toMisoString $ displayException err
-              }
-            Nothing
-      Right articles ->
-        pure $
-          ShowTopPage $
-            MkTopPage PagedArticles {page = fromMaybe 0 mcur, ..}
+    withArticles mcur $ pure . ShowTopPage . MkTopPage
 updateModel (ShowTopPage topPage) m = noEff m {mode = TopPage topPage}
 updateModel (OpenArticle slug) m =
-  m <# do
-    consoleLog $ "Opening article: " <> toMisoString slug
-    withArticleSlug slug (pure . ShowArticle)
+  m <# withArticleSlug slug (pure . ShowArticle)
 updateModel (ShowArticle article) m = noEff m {mode = ArticlePage article}
 updateModel (SwitchEditViewState st) m =
   noEff $ m & #mode . viewStateT .~ st
@@ -214,6 +210,21 @@ updateModel (ShowErrorPage title message) m =
 updateModel (SetEditedSlug slg) m =
   noEff $ m & #mode . #_CreatingArticle . #slug .~ slg
 
+withArticles :: Maybe Word -> (PagedArticles -> JSM Action) -> JSM Action
+withArticles mcur k = do
+  eith <- tryAny $ callApi (api.listArticles mcur)
+  case eith of
+    Left err ->
+      pure $
+        ShowErrorNotification
+          MkErrorMessage
+            { title = "Could not Retrieve Articles!"
+            , message = toMisoString $ displayException err
+            }
+          Nothing
+    Right articles ->
+      k PagedArticles {page = fromMaybe 0 mcur, ..}
+
 withArticleSlug :: T.Text -> (Article -> JSM Action) -> JSM Action
 withArticleSlug slug k = do
   eith <- tryAny $ callApi (api.getArticle slug)
@@ -253,8 +264,7 @@ handleUrl url =
     newArticle m = m <# pure OpenNewArticle
     editArticle slug m = m <# pure (OpenEditArticle slug)
     tagArticles tag mcur m = m <# pure (OpenTagArticles tag mcur)
-    -- FIXME: Implement Admin Home Page
-    adminHome m = noEff m
+    adminHome mcur m = m <# pure (OpenAdminPage mcur)
 
 openTopPage :: Maybe Word -> Action
 openTopPage = openEndpoint . rootApiURIs.frontend.topPage
@@ -262,8 +272,17 @@ openTopPage = openEndpoint . rootApiURIs.frontend.topPage
 openArticle :: T.Text -> Action
 openArticle = openEndpoint . rootApiURIs.frontend.articlePage
 
+openEditArticle :: T.Text -> Action
+openEditArticle = openEndpoint . rootApiURIs.frontend.editArticle
+
+openAdminPage :: Maybe Word -> Action
+openAdminPage = openEndpoint . rootApiURIs.frontend.adminHome
+
 openTagArticles :: T.Text -> Maybe Word -> Action
 openTagArticles tag = openEndpoint . rootApiURIs.frontend.tagArticles tag
+
+openNewArticle :: Action
+openNewArticle = openEndpoint rootApiURIs.frontend.newArticle
 
 openEndpoint :: URI -> Action
 openEndpoint = ChangeUrl
@@ -356,3 +375,32 @@ newTagT =
   failing
     (#_EditingArticle . newTagL)
     (#_CreatingArticle . newTagL)
+
+class HasArticles a where
+  articlesL :: Lens' a PagedArticles
+  articleAction# :: Proxy# a -> T.Text -> Action
+
+articleAction :: forall a -> (HasArticles a) => T.Text -> Action
+{-# INLINE articleAction #-}
+articleAction a = articleAction# @a proxy#
+
+instance HasArticles TagArticles where
+  articlesL = #articles
+  articleAction# _ = openArticle
+
+instance HasArticles TopPage where
+  articlesL = #articles
+  articleAction# _ = openArticle
+
+instance HasArticles AdminPage where
+  articlesL = #articles
+  articleAction# _ = openEditArticle
+
+articlesT :: Traversal' Mode PagedArticles
+articlesT =
+  failing
+    ( failing
+        (#_TopPage . articlesL)
+        (#_TagArticles . articlesL)
+    )
+    (#_AdminPage . articlesL)

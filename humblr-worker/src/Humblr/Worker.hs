@@ -115,7 +115,7 @@ frontend =
     , newArticle = serveIndex
     , editArticle = const serveIndex
     , articlePage = const serveIndex
-    , adminHome = serveIndex
+    , adminHome = const serveIndex
     }
 
 serveIndex :: Worker HumblrEnv Raw

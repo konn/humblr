@@ -122,7 +122,7 @@ data FrontendRoutes mode = FrontendRoutes
   , tagArticles :: mode :- "tags" :> Capture "tag" T.Text :> QueryParam "page" Word :> Raw
   , editArticle :: mode :- "admin" :> "edit" :> Capture "slug" T.Text :> Raw
   , newArticle :: mode :- "admin" :> "new" :> Raw
-  , adminHome :: mode :- "admin" :> Raw
+  , adminHome :: mode :- "admin" :> QueryParam "page" Word :> Raw
   , topPage :: mode :- QueryParam "page" Word :> Raw
   }
   deriving (Generic)

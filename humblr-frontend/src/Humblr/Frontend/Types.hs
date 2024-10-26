@@ -27,7 +27,9 @@ module Humblr.Frontend.Types (
   Model (..),
   initialModel,
   Mode (..),
+  isAdminMode,
   TopPage (..),
+  AdminPage (..),
   ErrorPage (..),
   ErrorMessage (..),
   ArticleFragment (..),
@@ -67,7 +69,11 @@ import Servant.Client.FetchAPI
 import Servant.Client.Generic (genericClient)
 
 initialModel :: Model
-initialModel = Model {mode = Idle, errorMessage = Nothing}
+initialModel =
+  Model
+    { mode = Idle
+    , errorMessage = Nothing
+    }
 
 data ErrorMessage = MkErrorMessage {title, message :: MisoString}
   deriving (Show, Eq, Generic)
@@ -82,12 +88,23 @@ data PageOptions = PageOptions
 data Mode
   = TopPage !TopPage
   | ArticlePage !Article
+  | TagArticles !TagArticles
+  | AdminPage !AdminPage
   | EditingArticle !EditedArticle
   | CreatingArticle !NewArticle
-  | TagArticles !TagArticles
   | ErrorPage !ErrorPage
   | Idle
   deriving (Show, Generic, Eq)
+
+isAdminMode :: Mode -> Bool
+isAdminMode TopPage {} = False
+isAdminMode ArticlePage {} = False
+isAdminMode TagArticles {} = False
+isAdminMode AdminPage {} = True
+isAdminMode EditingArticle {} = True
+isAdminMode CreatingArticle {} = True
+isAdminMode ErrorPage {} = False
+isAdminMode Idle = False
 
 data TagArticles = MkTagArticles
   { tag :: !T.Text
@@ -142,6 +159,9 @@ data EditViewState = Edit | Preview
 newtype TopPage = MkTopPage {articles :: PagedArticles}
   deriving (Show, Generic, Eq)
 
+newtype AdminPage = MkAdminPage {articles :: PagedArticles}
+  deriving (Show, Generic, Eq)
+
 data ErrorPage = MkErrorPage
   { title :: !MisoString
   , message :: !MisoString
@@ -164,6 +184,8 @@ data Action
   | ShowTopPage !TopPage
   | OpenArticle !T.Text
   | ShowArticle !Article
+  | OpenAdminPage !(Maybe Word)
+  | ShowAdminPage !AdminPage
   | OpenNewArticle
   | ShowNewArticle !UTCTime
   | CreateNewArticle

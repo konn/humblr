@@ -13,6 +13,7 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RequiredTypeArguments #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -61,19 +62,37 @@ mainView m = case m.mode of
     [ div_ [class_ "content"] [progress_ [class_ "progress is-large"] ["Loading..."]]
     ]
   TopPage topPage -> topPageView topPage
+  AdminPage adminPage -> adminPageView adminPage
   ArticlePage art -> articleView FrontEndArticle art
   EditingArticle edit -> editView edit
   CreatingArticle newArticle -> newArticleView newArticle
   TagArticles tagArticles ->
     articlesList
-      [ "Articles tagged with "
-      , span_ [class_ "tag is-large"] [text tagArticles.tag]
-      ]
-      tagArticles.articles
+      ( \cursor ->
+          [ "Articles tagged with "
+          , span_ [class_ "tag is-large"] [text tagArticles.tag]
+          , " "
+          ]
+            ++ cursor
+      )
+      tagArticles
   ErrorPage MkErrorPage {..} ->
     [ h2_ [class_ "title"] [text title]
     , p_ [class_ "content"] [text message]
     ]
+
+adminPageView :: AdminPage -> [View Action]
+adminPageView =
+  articlesList $
+    \cursor ->
+      [ div_
+          [class_ "level"]
+          [ div_ [class_ "level-left"] $ "Admin: Recent Articles " : cursor
+          , div_
+              [class_ "level-right"]
+              [button_ [class_ "button is-link", onClick $ openNewArticle] [icon "add"]]
+          ]
+      ]
 
 newArticleView :: NewArticle -> [View Action]
 newArticleView na =
@@ -298,31 +317,32 @@ linkToTag FrontEndArticle tag = a_ [onClick $ openTagArticles tag Nothing]
 linkToTag PreviewArticle _ = a_ []
 
 topPageView :: TopPage -> [View Action]
-topPageView MkTopPage {..} = articlesList ["Recent Articles"] articles
+topPageView top = articlesList (\curs -> "Recent Articles " : curs) top
 
-articlesList :: [View Action] -> PagedArticles -> [View Action]
-articlesList title PagedArticles {..} =
-  [ h2_
-      [class_ "title"]
-      $ title
-        <> [ " ("
-           , fromString $ show $ page * 10 + 1
-           , "-"
-           , fromString $ show $ page * 10 + fromIntegral (length articles)
-           , ")"
-           ]
-  , p_
-      [class_ "content"]
-      [ div_
-          [class_ "grid is-col-min-10"]
-          $ map (div_ [class_ "cell"] . pure . articleOverview)
-          $ toList articles
+articlesList :: forall arts. (HasArticles arts) => ([View Action] -> [View Action]) -> arts -> [View Action]
+articlesList title as =
+  let PagedArticles {..} = as ^. articlesL
+   in [ h2_
+          [class_ "title"]
+          $ title
+            [ " ("
+            , fromString $ show $ page * 10 + 1
+            , "-"
+            , fromString $ show $ page * 10 + fromIntegral (length articles)
+            , ")"
+            ]
+      , p_
+          [class_ "content"]
+          [ div_
+              [class_ "grid is-col-min-10"]
+              $ map (div_ [class_ "cell"] . pure . articleOverview arts)
+              $ toList articles
+          ]
       ]
-  ]
 
-articleOverview :: Article -> View Action
-articleOverview Article {..} =
-  let linkToArticle = a_ [onClick $ openArticle slug]
+articleOverview :: forall arts -> (HasArticles arts) => Article -> View Action
+articleOverview arts Article {..} =
+  let linkToArticle = a_ [onClick $ articleAction arts slug]
       nodes = CM.commonmarkToNode [] body
    in div_
         [class_ "box theme-light"]
@@ -351,17 +371,30 @@ articleOverview Article {..} =
         ]
 
 headerView :: Model -> View Action
-headerView _ =
-  section_
-    [class_ "hero"]
-    [ div_
-        [class_ "hero-body"]
+headerView m =
+  if isAdminMode m.mode
+    then
+      section_
+        [class_ "hero has-background-light has-text-black-bis"]
         [ div_
-            [class_ "container has-text-centered"]
-            [ h1_ [class_ "title"] [a_ [onClick $ openTopPage Nothing] ["ごはんぶらー"]]
+            [class_ "hero-body"]
+            [ div_
+                [class_ "container has-text-centered"]
+                [ h1_ [class_ "title"] [a_ [onClick $ openAdminPage Nothing] ["Admin ごはんぶらー"]]
+                ]
             ]
         ]
-    ]
+    else
+      section_
+        [class_ "hero"]
+        [ div_
+            [class_ "hero-body"]
+            [ div_
+                [class_ "container has-text-centered"]
+                [ h1_ [class_ "title"] [a_ [onClick $ openTopPage Nothing] ["ごはんぶらー"]]
+                ]
+            ]
+        ]
 
 footerView :: View Action
 footerView =
