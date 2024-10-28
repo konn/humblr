@@ -1,7 +1,7 @@
 cabal-version: 3.4
-name: humblr-worker
+name: humblr-workers
 version: 0.1.0.0
-description: Please see the README on GitHub at <https://github.com/konn/humblr/humblr-worker#readme>
+description: Please see the README on GitHub at <https://github.com/konn/humblr/humblr-workers#readme>
 homepage: https://github.com/konn/humblr#readme
 bug-reports: https://github.com/konn/humblr/issues
 author: Hiromi ISHII
@@ -23,8 +23,8 @@ source-repository head
   subdir: humblr-worker
 
 common defaults
-  autogen-modules: Paths_humblr_worker
-  other-modules: Paths_humblr_worker
+  autogen-modules: Paths_humblr_workers
+  other-modules: Paths_humblr_workers
   ghc-options:
     -Wall
     -Wcompat
@@ -66,13 +66,16 @@ library
 
   hs-source-dirs: src
   -- cabal-gild: discover src --exclude=src/**/Internal.hs --exclude=src/**/Internal/**/*.hs
-  exposed-modules: Humblr.Worker
+  exposed-modules:
+    Humblr.Worker.Database
+    Humblr.Worker.Router
+
   -- cabal-gild: discover src --include=src/**/Internal.hs --include=src/**/Internal/**/*.hs
   other-modules:
 
-executable humblr-worker
+executable humblr-router
   import: defaults
-  hs-source-dirs: app/frontend
+  hs-source-dirs: app/router
   main-is: Main.hs
   ghc-options: -O2
   -- cabal-gild: discover app/frontend --exclude=app/frontend/Main.hs
@@ -83,4 +86,19 @@ executable humblr-worker
       -no-hs-main
       -optl-mexec-model=reactor
       "-optl-Wl,--export=handlers"
-  build-depends: humblr-worker
+  build-depends: humblr-workers
+
+executable humblr-database
+  import: defaults
+  hs-source-dirs: app/database
+  main-is: Main.hs
+  ghc-options: -O2
+  -- cabal-gild: discover app/frontend --exclude=app/frontend/Main.hs
+  other-modules:
+
+  if os(wasi)
+    ghc-options:
+      -no-hs-main
+      -optl-mexec-model=reactor
+      "-optl-Wl,--export=handlers"
+  build-depends: humblr-workers

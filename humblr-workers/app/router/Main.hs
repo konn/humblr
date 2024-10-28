@@ -1,6 +1,6 @@
 module Main (main, handlers) where
 
-import Humblr.Worker
+import Humblr.Worker.Router
 
 foreign export javascript "handlers" handlers :: IO JSHandlers
 

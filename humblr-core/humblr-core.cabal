@@ -44,6 +44,7 @@ library
   import: defaults
   build-depends:
     aeson,
+    cloudflare-worker,
     cmark,
     containers,
     generic-lens,

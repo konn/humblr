@@ -18,7 +18,7 @@ build-all:
   COPY --keep-ts ./build-scripts ./build-scripts
   COPY --keep-ts ./humblr-core ./humblr-core
   COPY --keep-ts ./humblr-frontend ./humblr-frontend
-  COPY --keep-ts ./humblr-worker ./humblr-worker
+  COPY --keep-ts ./humblr-workers ./humblr-workers
   CACHE --sharing shared --chmod 0777 --id=all#ghc-${GHC_VER}#global-store --persist /root/.ghc-wasm/.cabal/store
   CACHE --sharing=shared --chmod=0777 --id=all#ghc${GHC_VER}#dist-newstyle --persist dist-newstyle
   RUN ${CABAL} update --index-state=2024-10-17T07:25:36Z
@@ -89,9 +89,9 @@ frontend:
   SAVE ARTIFACT ./dist
 
 worker:
-  COPY humblr-worker/data/worker-template/ ./dist/
-  BUILD --platform=linux/amd64  +patch-jsffi-for-cf --target=humblr-worker:exe:humblr-worker --wasm=worker.wasm
-  COPY (+patch-jsffi-for-cf/dist --target=humblr-worker:exe:humblr-worker --wasm=worker.wasm) ./dist/src
+  COPY humblr-workers/data/worker-template/ ./dist/
+  BUILD --platform=linux/amd64  +patch-jsffi-for-cf --target=humblr-workers:exe:humblr-router --wasm=worker.wasm
+  COPY (+patch-jsffi-for-cf/dist --target=humblr-workers:exe:humblr-router --wasm=worker.wasm) ./dist/src
   RUN cd ./dist && npm i
   BUILD  --platform=linux/amd64 +frontend
   COPY +frontend/dist/* ./dist/assets/assets/
