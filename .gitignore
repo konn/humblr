@@ -313,3 +313,4 @@ dist
 .yarn/install-state.gz
 .pnp.*
 .wrangler
+.dev.vars

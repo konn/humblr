@@ -1,6 +1,6 @@
 VERSION 0.8
 ARG --global GHC_VER=9.10.1
-ARG --global GLOBAL_CACHE_IMAGE=ghcr.io/konn/humblr/build-cache
+ARG --global GLOBAL_CACHE_IMAGE=ghcr.io/konn/shortener/build-cache
 FROM --platform=linux/amd64 ghcr.io/konn/ghc-wasm-earthly:${GHC_VER}
 WORKDIR /workdir
 
@@ -15,7 +15,6 @@ ENV CABAL=wasm32-wasi-cabal --project-file=cabal-wasm.project \
 build-all:
   COPY --keep-ts ./*.project ./
   COPY --keep-ts ./*.freeze ./
-  COPY --keep-ts ./build-scripts ./build-scripts
   COPY --keep-ts ./humblr-core ./humblr-core
   COPY --keep-ts ./humblr-frontend ./humblr-frontend
   COPY --keep-ts ./humblr-workers ./humblr-workers
@@ -88,12 +87,26 @@ frontend:
   RUN sed -i "s/index.js/${INDEX_JS_FINAL}/g" dist/index.html
   SAVE ARTIFACT ./dist
 
-worker:
+build-worker:
+  ARG target
   COPY humblr-workers/data/worker-template/ ./dist/
-  BUILD --platform=linux/amd64  +patch-jsffi-for-cf --target=humblr-workers:exe:humblr-router --wasm=worker.wasm
-  COPY (+patch-jsffi-for-cf/dist --target=humblr-workers:exe:humblr-router --wasm=worker.wasm) ./dist/src
+  COPY humblr-workers/data/wrangler-configs/${target}/* ./dist/
+  BUILD --platform=linux/amd64  +patch-jsffi-for-cf --target=humblr-workers:exe:${target} --wasm=worker.wasm
+  COPY (+patch-jsffi-for-cf/dist --target=humblr-workers:exe:${target} --wasm=worker.wasm) ./dist/src
   RUN cd ./dist && npm i
+  SAVE ARTIFACT ./dist
+
+all:
+  # Build database worker
+  BUILD --platform=linux/amd64 +build-worker --target=humblr-database --wasm=worker.wasm
+  COPY (+build-worker/dist --target=humblr-database) ./dist/database
+  # Build Router worker
+
+  BUILD --platform=linux/amd64 +build-worker --target=humblr-router --wasm=worker.wasm
+  COPY (+build-worker/dist --target=humblr-router) ./dist/router
+
+  # Place frontend in the router assets
   BUILD  --platform=linux/amd64 +frontend
-  COPY +frontend/dist/* ./dist/assets/assets/
-  SAVE ARTIFACT ./dist AS LOCAL _build/worker
+  COPY +frontend/dist/* ./dist/router/assets/assets/
+  SAVE ARTIFACT ./dist AS LOCAL _build
   SAVE IMAGE --push "${GLOBAL_CACHE_IMAGE}:cache"

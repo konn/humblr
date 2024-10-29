@@ -169,7 +169,9 @@ postArticle user art = protectIfConfigured user do
 getArticle :: T.Text -> App Article
 getArticle slug = do
   db <- getBinding "Database"
-  liftIO $ await' =<< db.getArticle slug
+  p <- liftIO $ db.getArticle slug
+  liftIO $ inspect $ jsPromise p
+  liftIO $ await' p
 
 listTagArticles :: T.Text -> Maybe Word -> App [Article]
 listTagArticles tag mpage = do
@@ -180,3 +182,6 @@ listArticles :: Maybe Word -> App [Article]
 listArticles mpage = do
   db <- getBinding "Database"
   liftIO $ await' =<< db.listArticles mpage
+
+foreign import javascript unsafe "console.log(`inspect(${typeof $1}): ${JSON.stringify($1)}`)"
+  inspect :: JSObject a -> IO ()
