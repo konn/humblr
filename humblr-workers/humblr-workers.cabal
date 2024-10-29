@@ -50,7 +50,6 @@ library
   import: defaults
   build-depends:
     aeson,
-    async,
     bytestring,
     cloudflare-worker,
     ghc-wasm-compat,
@@ -63,12 +62,15 @@ library
     text,
     time,
     vector,
+    wasm-linear-base,
+    web-sys-hs,
 
   hs-source-dirs: src
   -- cabal-gild: discover src --exclude=src/**/Internal.hs --exclude=src/**/Internal/**/*.hs
   exposed-modules:
     Humblr.Worker.Database
     Humblr.Worker.Router
+    Humblr.Worker.Storage
 
   -- cabal-gild: discover src --include=src/**/Internal.hs --include=src/**/Internal/**/*.hs
   other-modules:
@@ -78,7 +80,7 @@ executable humblr-router
   hs-source-dirs: app/router
   main-is: Main.hs
   ghc-options: -O2
-  -- cabal-gild: discover app/frontend --exclude=app/frontend/Main.hs
+  -- cabal-gild: discover app/router --exclude=app/router/Main.hs
   other-modules:
 
   if os(wasi)
@@ -93,7 +95,22 @@ executable humblr-database
   hs-source-dirs: app/database
   main-is: Main.hs
   ghc-options: -O2
-  -- cabal-gild: discover app/frontend --exclude=app/frontend/Main.hs
+  -- cabal-gild: discover app/database --exclude=app/database/Main.hs
+  other-modules:
+
+  if os(wasi)
+    ghc-options:
+      -no-hs-main
+      -optl-mexec-model=reactor
+      "-optl-Wl,--export=handlers"
+  build-depends: humblr-workers
+
+executable humblr-storage
+  import: defaults
+  hs-source-dirs: app/storage
+  main-is: Main.hs
+  ghc-options: -O2
+  -- cabal-gild: discover app/storage --exclude=app/storage/Main.hs
   other-modules:
 
   if os(wasi)

@@ -100,8 +100,12 @@ all:
   # Build database worker
   BUILD --platform=linux/amd64 +build-worker --target=humblr-database --wasm=worker.wasm
   COPY (+build-worker/dist --target=humblr-database) ./dist/database
-  # Build Router worker
 
+  # Build storage worker
+  BUILD --platform=linux/amd64 +build-worker --target=humblr-storage --wasm=worker.wasm
+  COPY (+build-worker/dist --target=humblr-storage) ./dist/storage
+
+  # Build Router worker
   BUILD --platform=linux/amd64 +build-worker --target=humblr-router --wasm=worker.wasm
   COPY (+build-worker/dist --target=humblr-router) ./dist/router
 

@@ -39,7 +39,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/konn/ghc-wasm-earthly
-  tag: fbb946134b158ee44a5b3a1d2d272eefde741ee1
+  tag: a605cfa7cd3bf583067951bc40295d73c46f8a02
   subdir:
     cloudflare-worker
     ghc-wasm-jsobjects
@@ -50,7 +50,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/konn/servant-cloudflare-workers
-  tag: df6e7766672fa8dce65ffcd811ba16d151cad996
+  tag: 605cda9db5a791615563c75b7938f757d2aa646d
   subdir:
     servant-cloudflare-workers
     servant-cloudflare-workers-effectful

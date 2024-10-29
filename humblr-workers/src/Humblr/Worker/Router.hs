@@ -28,22 +28,22 @@ import Data.Text qualified as T
 import GHC.Wasm.Object.Builtins
 import Humblr.Types
 import Humblr.Worker.Database (DatabaseServiceClass)
+import Humblr.Worker.Storage (StorageServiceClass)
 import Network.Cloudflare.Worker.Binding hiding (getBinding, getSecret)
 import Network.Cloudflare.Worker.Binding qualified as Raw
 import Network.Cloudflare.Worker.Binding.Assets (AssetsClass)
 import Network.Cloudflare.Worker.Binding.Assets qualified as RawAssets
-import Network.Cloudflare.Worker.Binding.R2 (R2Class)
 import Network.Cloudflare.Worker.Request qualified as Req
 import Network.URI
 import Servant.Auth.Cloudflare.Workers
 import Servant.Cloudflare.Workers.Assets (serveAssets)
 import Servant.Cloudflare.Workers.Cache (CacheOptions (..), serveCachedRaw)
+import Servant.Cloudflare.Workers.Cache qualified as Cache
 import Servant.Cloudflare.Workers.Generic (AsWorker, genericCompileWorkerContext)
 import Servant.Cloudflare.Workers.Internal.Response (toWorkerResponse)
 import Servant.Cloudflare.Workers.Internal.RoutingApplication
 import Servant.Cloudflare.Workers.Internal.ServerError (responseServerError)
 import Servant.Cloudflare.Workers.Prelude hiding (inject)
-import Servant.Cloudflare.Workers.R2 qualified as R2
 
 type App = Handler HumblrEnv
 
@@ -51,7 +51,7 @@ type HumblrEnv =
   BindingsClass
     '["BASE_URL", "CF_TEAM_NAME"]
     '["CF_AUD_TAG"]
-    '[ '("R2", R2Class)
+    '[ '("Storage", StorageServiceClass)
      , '("Database", DatabaseServiceClass)
      , '("ASSETS", AssetsClass)
      ]
@@ -94,7 +94,11 @@ workers =
     }
 
 resources :: Worker HumblrEnv Raw
-resources = R2.serveBucketRel "R2"
+resources = Cache.serveCachedRaw assetCacheOptions $ Tagged \req env _ -> do
+  let storage = Raw.getBinding "Storage" env
+      pth = T.intercalate "/" req.pathInfo
+  resp <- await' =<< storage.get pth
+  pure resp
 
 frontend :: FrontendRoutes (AsWorker HumblrEnv)
 frontend =
@@ -170,7 +174,6 @@ getArticle :: T.Text -> App Article
 getArticle slug = do
   db <- getBinding "Database"
   p <- liftIO $ db.getArticle slug
-  liftIO $ inspect $ jsPromise p
   liftIO $ await' p
 
 listTagArticles :: T.Text -> Maybe Word -> App [Article]
@@ -182,6 +185,3 @@ listArticles :: Maybe Word -> App [Article]
 listArticles mpage = do
   db <- getBinding "Database"
   liftIO $ await' =<< db.listArticles mpage
-
-foreign import javascript unsafe "console.log(`inspect(${typeof $1}): ${JSON.stringify($1)}`)"
-  inspect :: JSObject a -> IO ()
