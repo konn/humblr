@@ -31,7 +31,6 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Generics (Generic)
 import GHC.Wasm.Object.Builtins
-import GHC.Wasm.Web.Generated.Headers (js_cons_Headers)
 import GHC.Wasm.Web.ReadableStream (ReadableStream)
 import Network.Cloudflare.Worker.Binding hiding (getBinding, getSecret)
 import Network.Cloudflare.Worker.Binding.R2 (R2Class)
@@ -84,19 +83,20 @@ get name = do
           =<< await'
           =<< R2.get r2 (TE.encodeUtf8 name)
     liftIO do
-      hdrs <- js_cons_Headers none
+      hdrs <- Resp.toHeaders mempty
       R2.writeObjectHttpMetadata objInfo hdrs
       ok <- fromHaskellByteString "Ok"
       automatic <- fromHaskellByteString "automatic"
       empty <- emptyObject
-      Resp.newResponse' (Just $ inject body) $
-        Just $
-          newDictionary
-            PL.$ setPartialField "status" (toJSPrim 200)
-            PL.. setPartialField "headers" (inject hdrs)
-            PL.. setPartialField "statusText" ok
-            PL.. setPartialField "encodeBody" automatic
-            PL.. setPartialField "cf" empty
+      Resp.newResponse'
+        (Just $ inject body)
+        $ Just
+        $ newDictionary
+          PL.$ setPartialField "status" (toJSPrim 200)
+          PL.. setPartialField "headers" (inject hdrs)
+          PL.. setPartialField "statusText" ok
+          PL.. setPartialField "encodeBody" automatic
+          PL.. setPartialField "cf" empty
 
 put :: T.Text -> ReadableStream -> App ()
 put name body = do
