@@ -22,11 +22,13 @@ import Control.Monad
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as A
 import Data.Aeson qualified as J
+import Data.CaseInsensitive qualified as CI
 import Data.Maybe (fromMaybe)
 import Data.String (fromString)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Wasm.Object.Builtins
+import GHC.Wasm.Web.ReadableStream (toReadableStream)
 import Humblr.Types
 import Humblr.Worker.Database (DatabaseServiceClass)
 import Humblr.Worker.Storage (StorageServiceClass)
@@ -35,6 +37,7 @@ import Network.Cloudflare.Worker.Binding qualified as Raw
 import Network.Cloudflare.Worker.Binding.Assets (AssetsClass)
 import Network.Cloudflare.Worker.Binding.Assets qualified as RawAssets
 import Network.Cloudflare.Worker.Request qualified as Req
+import Network.Cloudflare.Worker.Response qualified as Resp
 import Network.URI
 import Servant.Auth.Cloudflare.Workers
 import Servant.Cloudflare.Workers.Assets (serveAssets)
@@ -152,7 +155,23 @@ adminAPI usr =
     { putArticle = putArticle usr
     , postArticle = postArticle usr
     , deleteArticle = deleteArticle usr
+    , putResource = putResource usr
     }
+
+putResource :: AuthResult User -> T.Text -> Worker HumblrEnv Raw
+putResource user name
+  | Authenticated {} <- user = Tagged \req env _ -> do
+      let storage = Raw.getBinding "Storage" env
+      let pth = T.intercalate "/" $ name : req.pathInfo
+      meth <- fmap CI.mk $ toHaskellByteString $ Req.getMethod req.rawRequest
+      if (meth /= "PUT" && meth /= "POST")
+        then toWorkerResponse $ responseServerError err405 {errBody = "Method Not Allowed"}
+        else do
+          body <-
+            nullable (toReadableStream "") pure $ Req.getBody req.rawRequest
+          await' =<< storage.put pth body
+          Resp.newResponse Resp.SimpleResponseInit {status = 200, statusText = "OK", headers = mempty, body = Nothing}
+  | otherwise = Tagged \_ _ _ -> toWorkerResponse $ responseServerError err403 {errBody = "Unauthorised"}
 
 putArticle :: AuthResult User -> T.Text -> ArticleUpdate -> Handler HumblrEnv NoContent
 putArticle user slug upd = protectIfConfigured user do

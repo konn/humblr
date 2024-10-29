@@ -98,6 +98,7 @@ data AdminAPI mode = AdminAPI
       mode :- "articles" :> Capture "slug" T.Text :> ReqBody '[JSON] ArticleUpdate :> Put '[JSON] NoContent
   , deleteArticle ::
       mode :- "articles" :> Capture "slug" T.Text :> Delete '[JSON] NoContent
+  , putResource :: mode :- "resources" :> Capture "name" T.Text :> Raw
   }
   deriving (Generic)
 

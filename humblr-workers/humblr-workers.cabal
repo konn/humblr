@@ -51,6 +51,7 @@ library
   build-depends:
     aeson,
     bytestring,
+    case-insensitive,
     cloudflare-worker,
     ghc-wasm-compat,
     ghc-wasm-jsobjects,
