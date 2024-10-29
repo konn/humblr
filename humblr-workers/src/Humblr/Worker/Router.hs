@@ -25,6 +25,7 @@ import Data.Aeson qualified as J
 import Data.Maybe (fromMaybe)
 import Data.String (fromString)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import GHC.Wasm.Object.Builtins
 import Humblr.Types
 import Humblr.Worker.Database (DatabaseServiceClass)
@@ -97,8 +98,9 @@ resources :: Worker HumblrEnv Raw
 resources = Cache.serveCachedRaw assetCacheOptions $ Tagged \req env _ -> do
   let storage = Raw.getBinding "Storage" env
       pth = T.intercalate "/" req.pathInfo
+  consoleLog $ fromText $ "Fetching resource: " <> pth
   resp <- await' =<< storage.get pth
-  pure resp
+  maybe (toWorkerResponse $ responseServerError err404 {errBody = "Not Found: " <> TE.encodeUtf8 (Req.getUrl req.rawRequest)}) pure resp
 
 frontend :: FrontendRoutes (AsWorker HumblrEnv)
 frontend =
@@ -185,3 +187,6 @@ listArticles :: Maybe Word -> App [Article]
 listArticles mpage = do
   db <- getBinding "Database"
   liftIO $ await' =<< db.listArticles mpage
+
+foreign import javascript unsafe "console.log($1)"
+  consoleLog :: USVString -> IO ()

@@ -51,9 +51,9 @@ rootApiURIs = allFieldLinks' linkURI
 
 data RootAPI mode = RootAPI
   { apiRoutes :: mode :- "api" :> NamedRoutes RestApi
-  , frontend :: mode :- NamedRoutes FrontendRoutes
   , assets :: mode :- "assets" :> Raw
   , resources :: mode :- "resources" :> Raw
+  , frontend :: mode :- NamedRoutes FrontendRoutes
   }
   deriving (Generic)
 

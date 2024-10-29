@@ -61,6 +61,7 @@ library
     servant-cloudflare-workers,
     text,
     time,
+    transformers,
     vector,
     wasm-linear-base,
     web-sys-hs,

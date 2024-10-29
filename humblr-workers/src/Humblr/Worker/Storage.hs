@@ -26,6 +26,7 @@ module Humblr.Worker.Storage (
 import Control.Exception.Safe (Exception (..), throwIO)
 import Control.Monad
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans.Maybe (MaybeT (..))
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Generics (Generic)
@@ -43,7 +44,7 @@ import Wasm.Prelude.Linear qualified as PL
 type App = ServiceM StorageEnv '[]
 
 data StorageServiceFuns = StorageServiceFuns
-  { get :: T.Text -> App WorkerResponse
+  { get :: T.Text -> App (Maybe WorkerResponse)
   , put :: T.Text -> ReadableStream -> App ()
   }
   deriving (Generic)
@@ -68,32 +69,34 @@ handlers =
 data ResourceException = ResourceNotFound T.Text
   deriving (Show, Exception)
 
-get :: T.Text -> App WorkerResponse
+get :: T.Text -> App (Maybe WorkerResponse)
 get name = do
   r2 <- getBinding "R2"
 
-  liftIO do
+  liftIO $ runMaybeT do
     objInfo <-
-      maybe (throwIO $ ResourceNotFound name) pure
-        =<< await'
-        =<< R2.head r2 (TE.encodeUtf8 name)
+      MaybeT $
+        await'
+          =<< (R2.head r2 (TE.encodeUtf8 name))
     body <-
-      maybe (throwIO $ ResourceNotFound name) R2.getBody
-        =<< await'
-        =<< R2.get r2 (TE.encodeUtf8 name)
-    hdrs <- js_cons_Headers none
-    R2.writeObjectHttpMetadata objInfo hdrs
-    ok <- fromHaskellByteString "Ok"
-    automatic <- fromHaskellByteString "automatic"
-    empty <- emptyObject
-    Resp.newResponse' (Just $ inject body) $
-      Just $
-        newDictionary
-          PL.$ setPartialField "status" (toJSPrim 200)
-          PL.. setPartialField "headers" (inject hdrs)
-          PL.. setPartialField "statusText" ok
-          PL.. setPartialField "encodeBody" automatic
-          PL.. setPartialField "cf" empty
+      MaybeT $
+        mapM R2.getBody
+          =<< await'
+          =<< R2.get r2 (TE.encodeUtf8 name)
+    liftIO do
+      hdrs <- js_cons_Headers none
+      R2.writeObjectHttpMetadata objInfo hdrs
+      ok <- fromHaskellByteString "Ok"
+      automatic <- fromHaskellByteString "automatic"
+      empty <- emptyObject
+      Resp.newResponse' (Just $ inject body) $
+        Just $
+          newDictionary
+            PL.$ setPartialField "status" (toJSPrim 200)
+            PL.. setPartialField "headers" (inject hdrs)
+            PL.. setPartialField "statusText" ok
+            PL.. setPartialField "encodeBody" automatic
+            PL.. setPartialField "cf" empty
 
 put :: T.Text -> ReadableStream -> App ()
 put name body = do
