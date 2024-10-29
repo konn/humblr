@@ -34,7 +34,6 @@ import Data.Time (UTCTime, getCurrentTime)
 import Data.Vector qualified as V
 import GHC.Generics (Generic)
 import GHC.Wasm.Object.Builtins
-import GHC.Wasm.Prim
 import GHC.Word
 import Humblr.Types
 import Network.Cloudflare.Worker.Binding hiding (getBinding, getSecret)
@@ -81,7 +80,6 @@ handlers =
 
 putArticle :: T.Text -> ArticleUpdate -> App ()
 putArticle slug upd = do
-  consoleLog $ "Updating article: " <> show (slug, upd)
   tryInsertTagQ <- mkTryInsertTagQ
   lookupTagQ <- mkLookupTagNameQ
   tagArticleQ <- mkTagArticleQ
@@ -111,14 +109,9 @@ putArticle slug upd = do
         =<< D1.batch d1 (V.fromList $ updQ : delTagQ : insTagQ)
   unless (all (.success) resl) $
     throwString "Failed to update article"
-  consoleLog $ "Done!"
-
-consoleLog :: String -> App ()
-consoleLog = liftIO . js_consoleLog . toJSString
 
 deleteArticle :: T.Text -> App ()
 deleteArticle slug = do
-  consoleLog $ "Deleting article: " <> show slug
   lookupFromSlug <- mkLookupSlugQ
   met <- liftIO . (await' <=< D1.first) =<< bind lookupFromSlug slug
   let martId = either (const Nothing) (Just . (.id)) . D1.parseD1RowView @ArticleRow =<< met
@@ -131,39 +124,27 @@ deleteArticle slug = do
       delArt <- bind delArtQ aid
       d1 <- getBinding "D1"
       waitUntil . jsPromise =<< liftIO (D1.batch d1 (V.fromList [delTags, delArt]))
-  consoleLog $ "Done!"
 
 postArticle :: ArticleSeed -> App ()
 postArticle art = do
-  consoleLog $ "Posting article: " <> show art
   tryAny (createArticle art) >>= \case
     Left e ->
       throwString $ "Failed to create article: " <> displayException e
-    Right () -> do
-      consoleLog $ "Done!"
-      pure ()
+    Right () -> pure ()
 
 getArticle :: T.Text -> App Article
 getArticle slug = do
-  consoleLog $ "Getting article: " <> show slug
   maybe
-    ( do
-        consoleLog $ "Article Not Found: " <> show slug
-        throwString $ "Article Not Found: " <> T.unpack slug
-    )
+    (throwString $ "Article Not Found: " <> T.unpack slug)
     pure
     =<< lookupSlug slug
 
 listTagArticles :: T.Text -> Maybe Word -> App [Article]
-listTagArticles tag mpage = do
-  consoleLog $ "listTagArticles: " <> show (tag, mpage)
+listTagArticles tag mpage =
   getArticlesWithTag tag $ fromIntegral <$> mpage
 
 listArticles :: Maybe Word -> App [Article]
-listArticles mpage = do
-  consoleLog $ "listArticles: " <> show (mpage)
-  resl <- getRecentArticles (fromIntegral <$> mpage)
-  resl <$ consoleLog ("articles: " <> show resl)
+listArticles mpage = getRecentArticles (fromIntegral <$> mpage)
 
 newtype TagId = TagId {tagId :: Word32}
   deriving (Show, Eq, Ord, Generic)
@@ -243,13 +224,11 @@ mkArticleUpdateBody = do
 lookupSlug :: T.Text -> App (Maybe Article)
 lookupSlug slug = do
   lookupQ <- mkLookupSlugQ
-  consoleLog "Looking up slug"
   mrow <- liftIO . (await' <=< D1.first) =<< bind lookupQ slug
-  consoleLog $ "MRows: " <> show mrow
   forM mrow $ \row -> do
     case D1.parseD1RowView row of
-      Right r -> fromArticleRow r <* consoleLog ("Row decoded: " <> show r)
-      Left err -> throwString err <* consoleLog ("Row decode error: " <> err)
+      Right r -> fromArticleRow r
+      Left err -> throwString err
 
 prepare :: String -> App D1.PreparedStatement
 prepare q = do
@@ -397,6 +376,3 @@ fromArticleRow arow = do
       , createdAt = arow.createdAt
       , tags
       }
-
-foreign import javascript unsafe "console.log($1)"
-  js_consoleLog :: JSString -> IO ()
