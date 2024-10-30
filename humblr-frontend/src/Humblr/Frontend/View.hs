@@ -327,10 +327,10 @@ editMainView Edit art =
                               ]
                               [ figure_
                                   [class_ "image is-128by128"]
-                                  [ img_ [src_ img]
+                                  [ img_ [src_ $ attachmentUrl img.url]
                                   , a_
                                       [ class_ "delete is-large"
-                                      , onClick (RemoveBlobURL img)
+                                      , onClick (RemoveBlobURL img.url)
                                       , style_ $ Map.fromList [("position", "absolute"), ("top", "5pt"), ("right", "5pt")]
                                       ]
                                       []
@@ -516,7 +516,17 @@ articleOverview arts art@Article {..} =
                 [class_ "media-content"]
                 [ div_
                     [class_ "content is-size-3"]
-                    [ p_ [] [linkToArticle [text $ CM.nodeToPlainText $ fromMaybe nodes $ CM.getSummary nodes]]
+                    [ div_
+                        [class_ "grid"]
+                        [ div_
+                            [class_ "cell"]
+                            [ figure_
+                                [class_ "image"]
+                                [img_ [src_ img.url, alt_ img.name]]
+                            ]
+                        | img <- attachments
+                        ]
+                    , p_ [] [linkToArticle [text $ CM.nodeToPlainText $ fromMaybe nodes $ CM.getSummary nodes]]
                     ]
                 , nav_
                     [class_ "level"]
@@ -616,85 +626,3 @@ iconLeft name =
 
 onEnter :: Action -> Attribute Action
 onEnter action = onKeyDown $ bool NoOp action . (== KeyCode 13)
-
-{-
-
-toStandaloneHtml :: PageOptions -> Html () -> Html ()
-toStandaloneHtml opts body = doctypehtml_ do
-  head_ do
-    meta_ [charset_ "utf-8"]
-    meta_ [name_ "viewport", content_ "width=device-width, initial-scale=1"]
-    title_ $ toHtml opts.title
-    link_ [rel_ "stylesheet", href_ "https://cdn.jsdelivr.net/npm/bulma@1.0.1/css/bulma.min.css"]
-  body_ do
-    div_ [class_ "header-content"] do
-      section_ [class_ "hero is-light"] $
-        div_ [class_ "hero-body"] $
-          div_ [class_ "container has-text-centered"] do
-            h1_ [class_ "title"] $ a_ [href_ opts.topPage] $ toHtml opts.siteName
-
-    div_ [class_ "main-content"] body
-
-articlePage :: RenderingOptions -> Article -> Html ()
-articlePage opts Article {..} = do
-  div_ [class_ "container"] $
-    div_ [class_ "columns is-multiline is-centered"] $
-      div_ [class_ "column is-8"] $ div_ [class_ "box"] do
-        div_ [class_ "content is-large"] $ div_ [class_ "block"] do
-          div_ [class_ "block"] $
-            toHtmlRaw $
-              CM.nodeToHtml [] $
-                transform (rewriteImageLinks opts) $
-                  CM.commonmarkToNode [] body
-          div_ [class_ "level"] do
-            div_ [class_ "level-left"] $ do
-              p_ $ toHtml $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" $ utcToZonedTime opts.timeZone updatedAt
-            div_ [class_ "level-right"] $ forM_ tags \tag -> do
-              p_ $ a_ [class_ "tag", href_ $ opts.tagBase <> "/" <> tag] $ "#" <> toHtml tag
-
-rewriteImageLinks :: RenderingOptions -> CM.Node -> CM.Node
-rewriteImageLinks opts (CM.Node pos (CM.IMAGE url alt) ns) =
-  CM.Node pos (CM.IMAGE (adjustImgSrc opts url) alt) ns
-rewriteImageLinks _ n = n
-
-adjustImgSrc :: RenderingOptions -> CM.Url -> CM.Url
-adjustImgSrc opts src
-  | "http:" `T.isPrefixOf` src || "https:" `T.isPrefixOf` src = src
-  | otherwise = T.dropWhileEnd (== '/') opts.imageBase <> "/" <> src
-
-articleTable :: RenderingOptions -> [Article] -> Html ()
-articleTable opts arts = div_ [class_ "grid"] do
-  forM_ arts $ div_ [class_ "cell"] . articleCard opts
-
-data RenderingOptions = RenderingOptions
-  { imageBase, articleBase, tagBase :: !T.Text
-  , timeZone :: !TimeZone
-  }
-  deriving (Show, Eq, Ord, Generic)
-
-articleCard :: RenderingOptions -> Article -> Html ()
-articleCard opts Article {..} = div_ [class_ "box"] $ div_ [class_ "card"] do
-  let nodes = commonmarkToNode [] body
-      imgs =
-        nodes ^? deep (#_Node . _2 . #_IMAGE)
-      articleLink = T.dropWhileEnd (== '/') opts.articleBase <> "/" <> slug
-      summary = getSummary nodes
-  forM_ imgs $ \(i, alt) -> do
-    div_ [class_ "card-image"] do
-      figure_ [class_ "image is-4by3"] $
-        a_ [href_ articleLink] $
-          img_ [src_ $ T.dropWhileEnd (== '/') opts.imageBase <> "/" <> i, alt_ alt]
-  div_ [class_ "card-content"] do
-    div_ [class_ "content"] do
-      forM_ summary $ \(CM.Node pos ty ns) ->
-        toHtmlRaw $
-          CM.nodeToHtml [] $
-            CM.Node pos ty $
-              [CM.Node Nothing (CM.LINK articleLink "") ns]
-      a_ [href_ articleLink]
-        $ time_
-          [datetime_ $ T.pack $ iso8601Show createdAt]
-        $ toHtml
-        $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S"
-        $ utcToZonedTime opts.timeZone createdAt
- -}

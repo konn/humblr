@@ -7,6 +7,7 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
@@ -14,6 +15,12 @@ module Humblr.Types (
   Article (..),
   ArticleSeed (..),
   ArticleUpdate (..),
+  Image,
+  ImageType (..),
+  Attachment (..),
+  imageCType,
+  parseImageCType,
+  toExtension,
 
   -- * APIs
   User (..),
@@ -31,11 +38,15 @@ import Data.Aeson (FromJSON, ToJSON)
 import Data.Aeson qualified as J
 import Data.Generics.Labels ()
 import Data.Map.Strict qualified as Map
+import Data.Proxy (Proxy (..))
 import Data.Text qualified as T
 import Data.Time (UTCTime)
 import GHC.Generics (Generic)
 import Language.WASM.JSVal.Convert
+import Network.Cloudflare.Worker.Binding.D1 (FromD1Value (..), ToD1Value (..))
 import Network.Cloudflare.Worker.Binding.Service (IsServiceArg)
+import Network.HTTP.Media (MediaType)
+import Network.HTTP.Media qualified as M
 import Servant.API
 import Servant.Auth
 import Servant.Auth.JWT
@@ -91,6 +102,42 @@ data RestApi mode = RestApi
   }
   deriving (Generic)
 
+instance (HasLink api) => HasLink (Image :> api) where
+  type MkLink (Image :> api) x = MkLink api x
+  toLink toA _ = toLink toA (Proxy @api)
+  {-# INLINE toLink #-}
+
+data Image
+
+data ImageType = Png | Jpeg
+  deriving (Show, Eq, Ord, Generic)
+  deriving anyclass (FromJSON, ToJSON)
+
+toExtension :: ImageType -> T.Text
+toExtension Png = ".png"
+toExtension Jpeg = ".jpg"
+
+instance ToD1Value ImageType where
+  toD1ValueView Png = toD1ValueView ("image/png" :: T.Text)
+  toD1ValueView Jpeg = toD1ValueView ("image/jpeg" :: T.Text)
+
+instance FromD1Value ImageType where
+  parseD1ValueView v = do
+    txt <- parseD1ValueView v
+    case T.toLower txt of
+      "image/png" -> pure Png
+      "image/jpeg" -> pure Jpeg
+      _ -> Left $ "Invalid image type: " <> T.unpack txt
+
+imageCType :: ImageType -> MediaType
+imageCType Png = "image" M.// "png"
+imageCType Jpeg = "image" M.// "jpeg"
+
+parseImageCType :: T.Text -> Maybe ImageType
+parseImageCType "image/png" = Just Png
+parseImageCType "image/jpeg" = Just Jpeg
+parseImageCType _ = Nothing
+
 data AdminAPI mode = AdminAPI
   { postArticle ::
       mode :- "articles" :> ReqBody '[JSON] ArticleSeed :> Post '[JSON] NoContent
@@ -98,7 +145,8 @@ data AdminAPI mode = AdminAPI
       mode :- "articles" :> Capture "slug" T.Text :> ReqBody '[JSON] ArticleUpdate :> Put '[JSON] NoContent
   , deleteArticle ::
       mode :- "articles" :> Capture "slug" T.Text :> Delete '[JSON] NoContent
-  , putResource :: mode :- "resources" :> Capture "name" T.Text :> Raw
+  , putImage :: mode :- "resources" :> Image :> Put '[PlainText] T.Text
+  , postImage :: mode :- "resources" :> Image :> Post '[PlainText] T.Text
   }
   deriving (Generic)
 
@@ -124,10 +172,16 @@ data ArticleSeed = ArticleSeed
   { body :: !T.Text
   , slug :: !T.Text
   , tags :: ![T.Text]
+  , attachments :: ![Attachment]
   }
   deriving stock (Generic, Show, Eq)
   deriving anyclass (FromJSON, ToJSON)
   deriving (IsServiceArg) via ViaJSON ArticleSeed
+
+data Attachment = Attachment {name :: !T.Text, url :: !T.Text, ctype :: !ImageType}
+  deriving stock (Eq, Generic, Show)
+  deriving anyclass (FromJSON, ToJSON)
+  deriving (IsServiceArg) via ViaJSON Attachment
 
 data Article = Article
   { body :: !T.Text
@@ -135,6 +189,7 @@ data Article = Article
   , updatedAt :: !UTCTime
   , createdAt :: !UTCTime
   , tags :: ![T.Text]
+  , attachments :: ![Attachment]
   }
   deriving stock (Eq, Generic, Show)
   deriving anyclass (FromJSON, ToJSON)

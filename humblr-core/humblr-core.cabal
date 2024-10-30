@@ -48,11 +48,13 @@ library
     cmark,
     containers,
     generic-lens,
+    http-media,
     lens,
     servant,
     servant-auth-lite,
     text,
     time,
+    web-sys-hs,
 
   hs-source-dirs: src
   -- cabal-gild: discover src --exclude=src/**/Internal.hs --exclude=src/**/Internal/**/*.hs

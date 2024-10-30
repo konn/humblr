@@ -45,6 +45,7 @@ module Humblr.Frontend.Actions (
   BlobURLs (..),
 ) where
 
+import Control.Arrow ((&&&))
 import Control.Exception.Safe (Exception (..), tryAny)
 import Control.Lens hiding ((#))
 import Control.Monad (forM, forM_)
@@ -52,11 +53,11 @@ import Control.Monad.IO.Class (liftIO)
 import Data.Foldable qualified as F
 import Data.Functor (void)
 import Data.Generics.Labels ()
+import Data.Map.Ordered.Strict qualified as OM
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.Proxy (Proxy (..))
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
-import Data.Set.Ordered qualified as OSet
 import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, getCurrentTime)
 import Data.Time.Format (formatTime)
@@ -167,6 +168,7 @@ updateModel CreateNewArticle m =
                             { tags = F.toList fragment.tags
                             , slug = slug
                             , body = fragment.body
+                            , attachments = []
                             }
                   case eith of
                     Left err ->
@@ -192,10 +194,9 @@ updateModel (ShowNewArticle stamp) m =
             MkNewArticle
               { slug = T.pack $ formatTime defaultTimeLocale "%Y%m%d-%H-%M" stamp
               , fragment =
-                  ArticleFragment {body = mempty, tags = mempty, newTag = "", composingTag = False}
+                  ArticleFragment {body = mempty, tags = mempty, newTag = "", blobURLs = mempty}
               , viewState = Edit
               , dummyDate = stamp
-              , blobURLs = mempty
               }
       }
 updateModel (OpenTagArticles tag mcur) m =
@@ -279,19 +280,24 @@ updateModel (FileChanged (ElementId eid)) m =
         else do
           consoleLog $ "Number of files: " <> toMisoString (show numFiles)
           urls <- V.generateM numFiles \i -> do
-            fromJSVal
-              =<< (\f -> eval ("URL" :: String) ^. jsf ("createObjectURL" :: String) f)
-              =<< files ^. jsf ("item" :: String) (val i)
+            f <- files ^. jsf ("item" :: String) (val i)
+            mctype <- fmap (parseImageCType =<<) . fromJSVal =<< (getProp "type" $ Object f)
+            mname <- fromJSVal =<< (getProp "name" $ Object f)
+            murl <-
+              fmap (fmap TempImg) . fromJSVal
+                =<< eval ("URL" :: String) ^. jsf ("createObjectURL" :: String) f
+            forM ((,,) <$> mctype <*> murl <*> mname) \(ctype, url, name) ->
+              pure EditedAttachment {..}
 
           consoleLog $ "URLs: " <> toMisoString (show urls)
           empStr <- val ("" :: T.Text)
           setProp "value" empStr (Object file)
-          pure $ AddBlobURLs $ BlobURLs $ OSet.fromList $ catMaybes $ V.toList urls
+          pure $ AddBlobURLs $ BlobURLs $ OM.fromList $ map ((.name) &&& id) $ catMaybes $ V.toList urls
     either (const $ pure NoOp) pure resl
 updateModel (AddBlobURLs urls) m =
   noEff $ m & #mode . blobURLsT <>~ urls
 updateModel (RemoveBlobURL url) m =
-  noEff $ m & #mode . blobURLsT . #urls %~ OSet.delete url
+  noEff $ m & #mode . blobURLsT . #urls %~ OM.filter (const $ (/= url) . (.url))
 
 withArticles :: Maybe Word -> (PagedArticles -> JSM Action) -> JSM Action
 withArticles mcur k = do
@@ -411,6 +417,7 @@ instance HasEditView EditedArticle where
       , slug = art.original.slug
       , createdAt = art.original.createdAt
       , body = art.edition.body
+      , attachments = map fromEditedAttachment $ F.toList art.blobURLs.urls
       }
   saveAction# _ = SaveEditingArticle
   cancelAction = openArticle . (.original.slug)
@@ -429,10 +436,13 @@ instance HasEditView NewArticle where
       , slug = art.slug
       , createdAt = art.dummyDate
       , body = art.fragment.body
+      , attachments =
+          map fromEditedAttachment $
+            F.toList art.fragment.blobURLs.urls
       }
   saveAction# _ = CreateNewArticle
   cancelAction _ = openTopPage Nothing
-  blobURLsL = #blobURLs
+  blobURLsL = #fragment . #blobURLs
 
 saveAction :: forall state -> (HasEditView state) => Action
 {-# INLINE saveAction #-}

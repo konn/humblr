@@ -34,6 +34,11 @@ module Humblr.Frontend.Types (
   Modal (..),
   ShareInfo (..),
   BlobURLs (..),
+  EditedAttachment (..),
+  ImageUrl (..),
+  attachmentUrl,
+  fromAttachment,
+  fromEditedAttachment,
   ElementId (..),
   TopPage (..),
   AdminPage (..),
@@ -60,15 +65,19 @@ module Humblr.Frontend.Types (
   fileInputId,
 ) where
 
+import Control.Arrow ((&&&))
 import Control.Lens
 import Data.Aeson (FromJSON, ToJSON)
+import Data.ByteString qualified as BS
 import Data.Foldable qualified as F
 import Data.Generics.Labels ()
 import Data.Kind (Type)
+import Data.Map.Ordered.Strict (OMap)
+import Data.Map.Ordered.Strict qualified as OM
+import Data.Proxy (Proxy (..))
+import Data.Semigroup (First (..))
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
-import Data.Set.Ordered (OSet)
-import Data.Set.Ordered qualified as OSet
 import Data.String (IsString)
 import Data.Text qualified as T
 import Data.Time (UTCTime)
@@ -79,6 +88,7 @@ import Miso
 import Miso.String (MisoString)
 import Servant.API
 import Servant.Auth.Client (Token (..))
+import Servant.Client.Core
 import Servant.Client.FetchAPI
 import Servant.Client.Generic (genericClient)
 
@@ -138,7 +148,6 @@ data NewArticle = MkNewArticle
   , fragment :: !ArticleFragment
   , viewState :: !EditViewState
   , dummyDate :: !UTCTime
-  , blobURLs :: !BlobURLs
   }
   deriving (Show, Generic, Eq)
 
@@ -146,7 +155,7 @@ data ArticleFragment = ArticleFragment
   { body :: !MisoString
   , tags :: !(Seq MisoString)
   , newTag :: !MisoString
-  , composingTag :: !Bool
+  , blobURLs :: !BlobURLs
   }
   deriving (Show, Eq, Generic)
 
@@ -157,8 +166,8 @@ toArticleEdition :: Article -> ArticleFragment
 toArticleEdition Article {..} =
   ArticleFragment
     { newTag = ""
-    , composingTag = False
     , tags = Seq.fromList tags
+    , blobURLs = BlobURLs $ OM.fromList $ map ((.name) &&& fromAttachment) attachments
     , ..
     }
 
@@ -169,6 +178,29 @@ data EditedArticle = EditedArticle
   , blobURLs :: !BlobURLs
   }
   deriving (Show, Eq, Generic)
+
+data EditedAttachment = EditedAttachment
+  { url :: !ImageUrl
+  , ctype :: !ImageType
+  , name :: !T.Text
+  }
+  deriving (Show, Eq, Generic)
+
+fromEditedAttachment :: EditedAttachment -> Attachment
+fromEditedAttachment EditedAttachment {..} = Attachment {url = attachmentUrl url, ..}
+
+fromAttachment :: Attachment -> EditedAttachment
+fromAttachment Attachment {..} = EditedAttachment {url = FixedImg url, ..}
+
+data ImageUrl
+  = TempImg !MisoString
+  | FixedImg !MisoString
+  deriving (Show, Eq, Generic)
+
+attachmentUrl :: ImageUrl -> MisoString
+attachmentUrl = \case
+  TempImg url -> url
+  FixedImg url -> url
 
 data EditViewState = Edit | Preview
   deriving (Show, Eq, Generic)
@@ -240,12 +272,23 @@ data Action
   | DeleteArticle !MisoString
   | FileChanged !ElementId
   | AddBlobURLs !BlobURLs
-  | RemoveBlobURL !MisoString
+  | RemoveBlobURL !ImageUrl
   deriving (Show, Generic)
 
 newtype ElementId = ElementId {runElementId :: MisoString}
   deriving (Show, Eq, Ord, Generic)
   deriving newtype (IsString)
+
+instance (HasClient m ep) => HasClient m (Image :> ep) where
+  type Client m (Image :> ep) = ImageType -> BS.ByteString -> Client m ep
+  hoistClientMonad pm _ f cl = \a b ->
+    hoistClientMonad pm (Proxy :: Proxy ep) f (cl a b)
+  clientWithRoute pm _ req ct bs =
+    clientWithRoute pm (Proxy :: Proxy ep) $
+      setRequestBody
+        (RequestBodyBS bs)
+        (imageCType ct)
+        req
 
 api :: RestApi (AsClientT (FetchT JSM))
 api = (genericClient @RootAPI).apiRoutes
@@ -281,6 +324,9 @@ shareAreaId = "share-message"
 fileInputId :: MisoString
 fileInputId = "article-file-input"
 
-newtype BlobURLs = BlobURLs {urls :: OSet T.Text}
+newtype BlobURLs = BlobURLs {urls :: OMap T.Text EditedAttachment}
   deriving (Show, Eq, Generic)
-  deriving (Semigroup, Monoid) via OSet.Bias OSet.L (OSet T.Text)
+  deriving (Semigroup) via OM.Bias OM.R (OMap T.Text (First EditedAttachment))
+
+instance Monoid BlobURLs where
+  mempty = BlobURLs OM.empty

@@ -14,6 +14,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE NoFieldSelectors #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Humblr.Worker.Router (handlers, JSObject (..), JSHandlers) where
 
@@ -22,13 +23,15 @@ import Control.Monad
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as A
 import Data.Aeson qualified as J
+import Data.Bifunctor qualified as Bi
 import Data.CaseInsensitive qualified as CI
 import Data.Maybe (fromMaybe)
 import Data.String (fromString)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import GHC.Wasm.Object.Builtins
-import GHC.Wasm.Web.ReadableStream (toReadableStream)
+import GHC.Wasm.Web.ReadableStream (ReadableStream)
 import Humblr.Types
 import Humblr.Worker.Database (DatabaseServiceClass)
 import Humblr.Worker.Storage (StorageServiceClass)
@@ -36,14 +39,16 @@ import Network.Cloudflare.Worker.Binding hiding (getBinding, getSecret)
 import Network.Cloudflare.Worker.Binding qualified as Raw
 import Network.Cloudflare.Worker.Binding.Assets (AssetsClass)
 import Network.Cloudflare.Worker.Binding.Assets qualified as RawAssets
+import Network.Cloudflare.Worker.Crypto (randomUUID)
 import Network.Cloudflare.Worker.Request qualified as Req
-import Network.Cloudflare.Worker.Response qualified as Resp
 import Network.URI
 import Servant.Auth.Cloudflare.Workers
 import Servant.Cloudflare.Workers.Assets (serveAssets)
 import Servant.Cloudflare.Workers.Cache (CacheOptions (..), serveCachedRaw)
 import Servant.Cloudflare.Workers.Cache qualified as Cache
 import Servant.Cloudflare.Workers.Generic (AsWorker, genericCompileWorkerContext)
+import Servant.Cloudflare.Workers.Internal.Delayed (addBodyCheck)
+import Servant.Cloudflare.Workers.Internal.DelayedIO (delayedFail, withRequest)
 import Servant.Cloudflare.Workers.Internal.Response (toWorkerResponse)
 import Servant.Cloudflare.Workers.Internal.RoutingApplication
 import Servant.Cloudflare.Workers.Internal.ServerError (responseServerError)
@@ -148,29 +153,75 @@ apiRoutes =
     , adminAPI
     }
 
+instance (HasWorker e api ctxs) => HasWorker e (Image :> api) ctxs where
+  type
+    WorkerT e (Image :> api) m =
+      ImageType -> ReadableStream -> WorkerT e api m
+  hoistWorkerWithContext pe _ pctx hoist s =
+    fmap (hoistWorkerWithContext pe (Proxy @api) pctx hoist) . s
+
+  route pe Proxy context subserver =
+    route pe (Proxy :: Proxy api) context $
+      addBodyCheck (uncurry <$> subserver) ctCheck pure
+    where
+      ctCheck = withRequest $ \request _ _ -> do
+        let cty =
+              lookup "Content-Type" $
+                map (Bi.first CI.mk) . Req.getHeaders $
+                  request.rawRequest
+        case (`lookup` [("image/png", Png), ("image/jpeg", Jpeg)]) =<< cty of
+          Just ct ->
+            case fromNullable $ Req.getBody request.rawRequest of
+              Just body -> pure (ct, body)
+              Nothing -> delayedFail err400
+          Nothing -> delayedFail err415
+
+-- withRequest $ \request _ _ -> do
+{-
+      -- Content-Type check, we only lookup we can try to parse the request body
+      ctCheck = withRequest $ \request _ _ -> do
+        -- See HTTP RFC 2616, section 7.2.1
+        -- http://www.w3.org/Protocols/rfc2616/rfc2616-sec7.html#sec7.2.1
+        -- See also "W3C Internet Media Type registration, consistency of use"
+        -- http://www.w3.org/2001/tag/2002/0129-mime
+        let contentTypeH =
+              fromMaybe "application/octet-stream" $
+                lookup hContentType $
+                  requestHeaders request.rawRequest
+        case canHandleCTypeH (Proxy :: Proxy list) (BSL.fromStrict contentTypeH) :: Maybe (BSL.ByteString -> Either String a) of
+          Nothing -> delayedFail err415
+          Just f -> return f
+
+      -- Body check, we get a body parsing functions as the first argument.
+      bodyCheck f = withRequest $ \request _ _ -> do
+        mrqbody <- f <$> liftIO (lazyRequestBody request.rawRequest)
+        case sbool :: SBool (FoldLenient mods) of
+          STrue -> return mrqbody
+          SFalse -> case mrqbody of
+            Left e -> delayedFailFatal $ formatError rep request.rawRequest e
+            Right v -> return v -}
+
 adminAPI :: AuthResult User -> AdminAPI (AsWorker HumblrEnv)
 adminAPI usr =
   AdminAPI
     { putArticle = putArticle usr
     , postArticle = postArticle usr
     , deleteArticle = deleteArticle usr
-    , putResource = putResource usr
+    , putImage = putResource usr
+    , postImage = putResource usr
     }
 
-putResource :: AuthResult User -> T.Text -> Worker HumblrEnv Raw
-putResource user name
-  | Authenticated {} <- user = Tagged \req env _ -> do
-      let storage = Raw.getBinding "Storage" env
-      let pth = T.intercalate "/" $ name : req.pathInfo
-      meth <- fmap CI.mk $ toHaskellByteString $ Req.getMethod req.rawRequest
-      if (meth /= "PUT" && meth /= "POST")
-        then toWorkerResponse $ responseServerError err405 {errBody = "Method Not Allowed"}
-        else do
-          body <-
-            nullable (toReadableStream "") pure $ Req.getBody req.rawRequest
-          await' =<< storage.put pth body
-          Resp.newResponse Resp.SimpleResponseInit {status = 200, statusText = "OK", headers = mempty, body = Nothing}
-  | otherwise = Tagged \_ _ _ -> toWorkerResponse $ responseServerError err403 {errBody = "Unauthorised"}
+putResource :: AuthResult User -> ImageType -> ReadableStream -> Handler HumblrEnv T.Text
+putResource user ity body = protectIfConfigured user $ do
+  storage <- getBinding "Storage"
+  now <- liftIO getCurrentTime
+  nonce <- liftIO randomUUID
+  let pth =
+        T.pack (formatTime defaultTimeLocale "%Y%m%d-%H%M%S-" now)
+          <> nonce
+          <> toExtension ity
+  liftIO $ await' =<< storage.put pth body
+  pure pth
 
 putArticle :: AuthResult User -> T.Text -> ArticleUpdate -> Handler HumblrEnv NoContent
 putArticle user slug upd = protectIfConfigured user do

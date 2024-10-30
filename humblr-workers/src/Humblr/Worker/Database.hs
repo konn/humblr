@@ -25,6 +25,7 @@ module Humblr.Worker.Database (
 import Control.Exception.Safe (Exception (..), throwString, tryAny)
 import Control.Monad
 import Control.Monad.IO.Class (liftIO)
+import Data.Bifunctor qualified as Bi
 import Data.Coerce (coerce)
 import Data.Either (partitionEithers)
 import Data.Functor ((<&>))
@@ -154,6 +155,10 @@ newtype ArticleId = ArticleId {articleId :: Word32}
   deriving (Show, Eq, Ord, Generic)
   deriving newtype (FromD1Value, ToD1Value)
 
+newtype ImageId = ImageId {articleId :: Word32}
+  deriving (Show, Eq, Ord, Generic)
+  deriving newtype (FromD1Value, ToD1Value)
+
 data TagRow = TagRow {id :: !TagId, name :: !T.Text}
   deriving (Show, Eq, Ord, Generic)
   deriving anyclass (FromD1Row, ToD1Row)
@@ -164,6 +169,16 @@ data ArticleRow = ArticleRow
   , createdAt :: !UTCTime
   , lastUpdate :: !UTCTime
   , slug :: !T.Text
+  }
+  deriving (Show, Eq, Ord, Generic)
+  deriving anyclass (FromD1Row, ToD1Row)
+
+data ImageRow = ImageRow
+  { id :: !ImageId
+  , link :: !T.Text
+  , name :: !T.Text
+  , ctype :: !ImageType
+  , offset :: !Word32
   }
   deriving (Show, Eq, Ord, Generic)
   deriving anyclass (FromD1Row, ToD1Row)
@@ -250,6 +265,12 @@ mkLookupTagNameQ =
 mkArticleTagsQ :: App (Preparation '[ArticleId])
 mkArticleTagsQ =
   prepare "SELECT tag.name FROM tags tag INNER JOIN articleTags assoc ON tag.id = assoc.tag WHERE assoc.article = ?" <&> \prep ->
+    Preparation \aid ->
+      liftIO $ D1.bind prep (V.singleton $ D1.toD1ValueView aid)
+
+mkArticleImagesQ :: App (Preparation '[ArticleId])
+mkArticleImagesQ =
+  prepare "SELECT img.*, assoc.offset FROM images img INNER JOIN articleImages assoc on img.id = assoc.image_ WHERE assoc.article = ? ORDER BY assoc.offset ASC" <&> \prep ->
     Preparation \aid ->
       liftIO $ D1.bind prep (V.singleton $ D1.toD1ValueView aid)
 
@@ -363,11 +384,23 @@ fromArticleRow ::
   App Article
 fromArticleRow arow = do
   artTagsQ <- mkArticleTagsQ
-  rows <- liftIO . (await' <=< D1.all) =<< bind artTagsQ arow.id
-  unless rows.success $
+  tagRows <- liftIO . (await' <=< D1.all) =<< bind artTagsQ arow.id
+  unless tagRows.success $
     throwString "Failed to fetch tags for article"
-  let (fails, tags) = partitionEithers $ map (fmap getTagName . D1.parseD1RowView) $ V.toList rows.results
+  let (fails, tags) = partitionEithers $ map (fmap getTagName . D1.parseD1RowView) $ V.toList tagRows.results
   unless (null fails) $ throwString $ "Failed to parse tag row: " <> show fails
+
+  -- Fetch associated images.
+  artImgsQ <- mkArticleImagesQ
+  imgRows <- liftIO . (await' <=< D1.all) =<< bind artImgsQ arow.id
+  unless imgRows.success $
+    throwString "Failed to fetch images for article"
+  let (failImgs, attachments) =
+        Bi.second (map fromImageRow) $
+          partitionEithers $
+            map (D1.parseD1RowView @ImageRow) $
+              V.toList imgRows.results
+  unless (null failImgs) $ throwString $ "Failed to parse image row: " <> show (failImgs, V.toList imgRows.results)
   pure
     Article
       { body = arow.body
@@ -375,4 +408,8 @@ fromArticleRow arow = do
       , updatedAt = arow.lastUpdate
       , createdAt = arow.createdAt
       , tags
+      , attachments
       }
+
+fromImageRow :: ImageRow -> Attachment
+fromImageRow img = Attachment {ctype = img.ctype, url = img.link, name = img.name}
