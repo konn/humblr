@@ -439,19 +439,20 @@ articleView mode art@Article {..} =
    in [ div_
           [class_ "box is-four-fifth"]
           $ [ div_
-                [class_ "content is-size-3"]
-                [rawHtml $ CM.commonmarkToHtml [] body]
-            ]
-            <> [ nav_
-                  [class_ "level"]
-                  [ div_ [class_ "level-left"] []
-                  , div_
-                      [class_ "level-right"]
-                      [ div_ [class_ "level-item"] [shareButton art]
+                [class_ "content is-size-4"]
+                ( [ div_
+                      [class_ "grid"]
+                      [ div_
+                          [class_ "cell"]
+                          [ figure_ [class_ "image"] [img_ [src_ img.url, alt_ img.name]]
+                          ]
+                      | img <- attachments
                       ]
+                  | not $ null attachments
                   ]
-               | mode == FrontEndArticle
-               ]
+                    ++ [rawHtml (CM.commonmarkToHtml [] body)]
+                )
+            ]
             <> [ nav_
                   [class_ "level"]
                   [ div_
@@ -460,10 +461,20 @@ articleView mode art@Article {..} =
                       ]
                   , div_
                       [class_ "level-right"]
-                      [ div_
-                          [class_ "level-item"]
-                          [linkToArticle [small_ [] [text "Posted ", fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" createdAt]]]
-                      ]
+                      $ [ div_
+                            [class_ "level-item"]
+                            [linkToArticle [small_ [] [text "Posted ", fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" createdAt]]]
+                        ]
+                        ++ [ nav_
+                              [class_ "level"]
+                              [ div_ [class_ "level-left"] []
+                              , div_
+                                  [class_ "level-right"]
+                                  [ div_ [class_ "level-item"] [shareButton art]
+                                  ]
+                              ]
+                           | mode == FrontEndArticle
+                           ]
                   ]
                ]
       ]
@@ -516,18 +527,21 @@ articleOverview arts art@Article {..} =
                 [class_ "media-content"]
                 [ div_
                     [class_ "content is-size-3"]
-                    [ div_
-                        [class_ "grid"]
-                        [ div_
-                            [class_ "cell"]
-                            [ figure_
-                                [class_ "image"]
-                                [img_ [src_ img.url, alt_ img.name]]
+                    $ mconcat
+                      [ [ div_
+                            [class_ "grid"]
+                            [ div_
+                                [class_ "cell"]
+                                [ figure_
+                                    [class_ "image"]
+                                    [img_ [src_ img.url, alt_ img.name]]
+                                ]
+                            | img <- attachments
                             ]
-                        | img <- attachments
+                        | not $ null attachments
                         ]
-                    , p_ [] [linkToArticle [text $ CM.nodeToPlainText $ fromMaybe nodes $ CM.getSummary nodes]]
-                    ]
+                      , [p_ [] [linkToArticle [text $ CM.nodeToPlainText $ fromMaybe nodes $ CM.getSummary nodes]]]
+                      ]
                 , nav_
                     [class_ "level"]
                     [ div_
