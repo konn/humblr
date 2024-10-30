@@ -348,11 +348,7 @@ articleView mode art@Article {..} =
                   [ div_ [class_ "level-left"] []
                   , div_
                       [class_ "level-right"]
-                      [ button_
-                          [ class_ "level-item button is-rounded is-primary is-small"
-                          , onClick $ ShareArticle art
-                          ]
-                          [iconSmall "share"]
+                      [ div_ [class_ "level-item"] [shareButton art]
                       ]
                   ]
                | mode == FrontEndArticle
@@ -372,6 +368,14 @@ articleView mode art@Article {..} =
                   ]
                ]
       ]
+
+shareButton :: Article -> View Action
+shareButton art =
+  button_
+    [ class_ "level-item button is-rounded is-primary is-small"
+    , onClick $ ShareArticle art
+    ]
+    [iconSmall "share"]
 
 linkToTag :: ArticleViewMode -> MisoString -> [View Action] -> View Action
 linkToTag FrontEndArticle tag = a_ [onClick $ openTagArticles tag Nothing]
@@ -402,7 +406,7 @@ articlesList title as =
       ]
 
 articleOverview :: forall arts -> (HasArticles arts) => Article -> View Action
-articleOverview arts Article {..} =
+articleOverview arts art@Article {..} =
   let linkToArticle = a_ [onClick $ articleAction arts slug]
       nodes = CM.commonmarkToNode [] body
    in div_
@@ -425,7 +429,9 @@ articleOverview arts Article {..} =
                         ]
                     , div_
                         [class_ "level-right"]
-                        [linkToArticle [small_ [] [fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" createdAt]]]
+                        [ div_ [class_ "level-item"] [linkToArticle [small_ [] [fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" createdAt]]]
+                        , shareButton art
+                        ]
                     ]
                 ]
             ]
