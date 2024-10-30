@@ -1,0 +1,18 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "shell",
+      "group": "build",
+      "command": "earthly +all && ./scripts/migrate-local-frontend.sh",
+      "label": "earthly: build",
+      "detail": "$ earthly +all"
+    },
+    {
+      "type": "shell",
+      "command": "npx wrangler deploy --minify _build/database/src/worker.js && npx wrangler deploy --minify _build/storage/src/worker.js && npx wrangler deploy --minify _build/router/src/worker.js && pushd _build/database && yes y | npx wrangler  d1 migrations apply gohumblr --remote",
+      "label": "wrangler: deploy",
+      "detail": "$ wrangler deploy"
+    }
+  ]
+}
