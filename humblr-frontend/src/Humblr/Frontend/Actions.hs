@@ -161,14 +161,9 @@ updateModel CreateNewArticle m =
     `batchEff` [ do
                   eith <-
                     tryAny $
-                      callApi $
-                        (api.adminAPI (CloudflareToken Nothing)).postArticle
-                          ArticleSeed
-                            { tags = F.toList fragment.tags
-                            , slug = slug
-                            , body = fragment.body
-                            , attachments = []
-                            }
+                      callApi
+                        . (api.adminAPI (CloudflareToken Nothing)).postArticle
+                        =<< toArticleSeed slug fragment
                   case eith of
                     Left err ->
                       pure $

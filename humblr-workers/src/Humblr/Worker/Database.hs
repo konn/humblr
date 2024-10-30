@@ -81,9 +81,6 @@ handlers =
 
 putArticle :: T.Text -> ArticleUpdate -> App ()
 putArticle slug upd = do
-  tryInsertTagQ <- mkTryInsertTagQ
-  lookupTagQ <- mkLookupTagNameQ
-  tagArticleQ <- mkTagArticleQ
   lookSlugQ <- mkLookupSlugQ
   art <-
     either (throwString . ("Schema Error (article): " <>)) (pure . (.id))
@@ -91,25 +88,67 @@ putArticle slug upd = do
       =<< maybe (throwString $ ("Article not found: " <>) $ T.unpack slug) pure
       =<< liftIO . (await' <=< D1.first)
       =<< bind lookSlugQ slug
-  -- FIXME: make these two together with @art@ into a single batch.
-  insTagsQ <- mapM (bind tryInsertTagQ) upd.tags
-  tagIdsQ <- mapM (bind lookupTagQ) upd.tags
-  d1 <- getBinding "D1"
-  tagIds <-
-    V.toList
-      . V.mapMaybe (either (const Nothing) (Just . (.id)) . D1.parseD1RowView @TagRow)
-      . V.concatMap (.results)
-      <$> liftIO (await' =<< D1.batch d1 (V.fromList $ insTagsQ ++ tagIdsQ))
+  updArt <- mkArticleUpdateBody
+  void $ liftIO . (await' <=< D1.first) =<< bind updArt art upd
+  updateArticle (Just art) slug upd
 
-  updQ <- mkArticleUpdateBody >>= \q -> bind q art upd
-  delTagQ <- mkDeleteAllTagsOnArticle >>= \q -> bind q art
-  insTagQ <- mapM (bind tagArticleQ art) tagIds
-  resl <-
-    liftIO $
-      await'
-        =<< D1.batch d1 (V.fromList $ updQ : delTagQ : insTagQ)
-  unless (all (.success) resl) $
-    throwString "Failed to update article"
+updateArticle ::
+  Maybe ArticleId ->
+  T.Text ->
+  ArticleUpdate ->
+  App ()
+updateArticle toArtId slug ArticleUpdate {..} = do
+  tryInsertTagQ <- mkTryInsertTagQ
+  lookupTagQ <- mkLookupTagNameQ
+  tryNewImgQ <- mkTryNewImageQ
+  delArtImgQ <- deleteArticleImagesQ
+  lookupImgQ <- mkLookupImageQ
+  d1 <- getBinding "D1"
+  imgQs <- mapM (bind tryNewImgQ) attachments
+  imgIdsQ <- mapM (bind lookupImgQ) $ map (.url) attachments
+  tagIdsQ <- mapM (bind lookupTagQ) tags
+  tagQs <- mapM (bind tryInsertTagQ) tags
+  let numAtts = length attachments
+      basicQs = tagQs ++ tagIdsQ ++ imgQs ++ imgIdsQ
+
+  (qs, off, parseAid) <- case toArtId of
+    Just aid -> pure (basicQs, 0, const $ pure aid)
+    Nothing -> do
+      insertArtQ <- mkInsertArticleQ
+      newArt <- bind insertArtQ ArticleSeed {..}
+      artIdQ <-
+        prepare "SELECT id FROM articles WHERE slug = ?" >>= \q ->
+          liftIO (D1.bind q $ V.singleton $ D1.toD1ValueView slug)
+      pure
+        ( newArt : basicQs ++ [artIdQ]
+        , 1
+        , either (throwString . ("Failed to parse article" <>)) (pure . (.id))
+            . D1.parseD1RowView @ArticleIdRow
+            . V.head
+            . (.results)
+            . V.head
+        )
+  vs <- liftIO $ await' =<< D1.batch d1 (V.fromList qs)
+  unless (V.all (.success) vs) $
+    throwString $
+      "Failed to insert article: " <> T.unpack slug
+  let tagImgs = V.drop (length tags) $ V.drop off vs
+      (rawTagIds, V.drop numAtts -> rawImgsArtId) = V.splitAt (length tags) tagImgs
+      tagIds = V.mapMaybe (either (const Nothing) (Just . (.id)) . D1.parseD1RowView @TagRow) $ V.concatMap (.results) rawTagIds
+      (rawImgIds, rest) = V.splitAt numAtts rawImgsArtId
+      imgIds = V.mapMaybe (either (const Nothing) (Just . (.id)) . D1.parseD1RowView @ImageRow) $ V.concatMap (.results) rawImgIds
+  tagArtQ <- mkTagArticleQ
+  artImgQ <- mkArticleImageQ
+  artId <- parseAid rest
+  unless (null tagIds) $
+    void $
+      liftIO . D1.batch d1
+        =<< mapM (bind tagArtQ artId) tagIds
+  delImgs <- bind delArtImgQ artId
+  unless (null imgIds) $
+    void $
+      liftIO . D1.batch d1 . (V.cons delImgs)
+        =<< V.imapM (bind artImgQ artId . fromIntegral) imgIds
 
 deleteArticle :: T.Text -> App ()
 deleteArticle slug = do
@@ -173,12 +212,21 @@ data ArticleRow = ArticleRow
   deriving (Show, Eq, Ord, Generic)
   deriving anyclass (FromD1Row, ToD1Row)
 
-data ImageRow = ImageRow
+data ArtImageRow = ArtImageRow
   { id :: !ImageId
   , link :: !T.Text
   , name :: !T.Text
   , ctype :: !ImageType
   , offset :: !Word32
+  }
+  deriving (Show, Eq, Ord, Generic)
+  deriving anyclass (FromD1Row, ToD1Row)
+
+data ImageRow = ImageRow
+  { id :: !ImageId
+  , link :: !T.Text
+  , name :: !T.Text
+  , ctype :: !ImageType
   }
   deriving (Show, Eq, Ord, Generic)
   deriving anyclass (FromD1Row, ToD1Row)
@@ -262,6 +310,12 @@ mkLookupTagNameQ =
     Preparation \name ->
       liftIO $ D1.bind prep (V.singleton $ D1.toD1ValueView name)
 
+mkLookupImageQ :: App (Preparation '[T.Text])
+mkLookupImageQ =
+  prepare "SELECT * FROM images WHERE link = ?" <&> \prep ->
+    Preparation \link ->
+      liftIO $ D1.bind prep (V.singleton $ D1.toD1ValueView link)
+
 mkArticleTagsQ :: App (Preparation '[ArticleId])
 mkArticleTagsQ =
   prepare "SELECT tag.name FROM tags tag INNER JOIN articleTags assoc ON tag.id = assoc.tag WHERE assoc.article = ?" <&> \prep ->
@@ -275,40 +329,31 @@ mkArticleImagesQ =
       liftIO $ D1.bind prep (V.singleton $ D1.toD1ValueView aid)
 
 createArticle :: ArticleSeed -> App ()
-createArticle ArticleSeed {..} = do
-  tryInsertQ <- mkTryInsertTagQ
-  insertArtQ <- mkInsertArticleQ
-  lookupTagQ <- mkLookupTagNameQ
-  tagArtQ <- mkTagArticleQ
-  tagQs <- mapM (bind tryInsertQ) tags
-  newArt <- bind insertArtQ ArticleSeed {..}
-  tagIdsQ <- mapM (bind lookupTagQ) tags
-  artIdQ <-
-    prepare "SELECT id FROM articles WHERE slug = ?" >>= \q ->
-      liftIO (D1.bind q $ V.singleton $ D1.toD1ValueView slug)
-  d1 <- getBinding "D1"
-  vs <-
-    liftIO $
-      await'
-        =<< D1.batch d1 (V.fromList $ newArt : tagQs ++ tagIdsQ ++ [artIdQ])
-  unless (V.all (.success) vs) $
-    throwString $
-      "Failed to insert article: " <> T.unpack slug
-  let (_, rest) = V.splitAt (length tags) $ V.drop 1 vs
-      (rawTagIds, V.head -> rawArtId) = V.splitAt (length tags) rest
-      tagIds = V.mapMaybe (either (const Nothing) (Just . (.id)) . D1.parseD1RowView @TagRow) $ V.concatMap (.results) rawTagIds
-      artId =
-        either (error "Failed to parse article") (.id) $
-          D1.parseD1RowView @ArticleIdRow $
-            V.head rawArtId.results
-  unless (null tagIds) $
-    void $
-      liftIO . D1.batch d1
-        =<< mapM (bind tagArtQ artId) tagIds
+createArticle ArticleSeed {..} = updateArticle Nothing slug ArticleUpdate {..}
 
 newtype ArticleIdRow = ArticleIdRow {id :: ArticleId}
   deriving (Show, Eq, Ord, Generic)
   deriving anyclass (FromD1Row)
+
+data ImageSeed = ImageSeed
+  { name :: T.Text
+  , ctype :: ImageType
+  , link :: T.Text
+  }
+  deriving (Show, Eq, Ord, Generic)
+  deriving anyclass (FromD1Row, ToD1Row)
+
+mkTryNewImageQ :: App (Preparation '[Attachment])
+mkTryNewImageQ =
+  prepare "INSERT INTO images (name, ctype, link) VALUES (?1, ?2, ?3) ON CONFLICT DO NOTHING" <&> \prep ->
+    Preparation \Attachment {..} -> do
+      liftIO $
+        D1.bind prep $
+          V.fromList
+            [ D1.toD1ValueView name
+            , D1.toD1ValueView ctype
+            , D1.toD1ValueView url
+            ]
 
 mkInsertArticleQ :: App (Preparation '[ArticleSeed])
 mkInsertArticleQ =
@@ -334,6 +379,27 @@ mkTagArticleQ =
             [ D1.toD1ValueView aid
             , D1.toD1ValueView tid
             ]
+
+mkArticleImageQ :: App (Preparation '[ArticleId, Word32, ImageId])
+mkArticleImageQ =
+  prepare "INSERT INTO articleImages (article, image_, offset) VALUES (?1, ?2, ?3)" <&> \prep ->
+    Preparation \aid off iid ->
+      liftIO $
+        D1.bind prep $
+          V.fromList
+            [ D1.toD1ValueView aid
+            , D1.toD1ValueView iid
+            , D1.toD1ValueView off
+            ]
+
+deleteArticleImagesQ :: App (Preparation '[ArticleId])
+deleteArticleImagesQ =
+  prepare "DELETE FROM articleImages WHERE article = ?" <&> \prep ->
+    Preparation \aid ->
+      liftIO $
+        D1.bind prep $
+          V.singleton $
+            D1.toD1ValueView aid
 
 mkArticleWithTagsQ :: App (Preparation '[T.Text, Word32])
 mkArticleWithTagsQ =
@@ -398,7 +464,7 @@ fromArticleRow arow = do
   let (failImgs, attachments) =
         Bi.second (map fromImageRow) $
           partitionEithers $
-            map (D1.parseD1RowView @ImageRow) $
+            map (D1.parseD1RowView @ArtImageRow) $
               V.toList imgRows.results
   unless (null failImgs) $ throwString $ "Failed to parse image row: " <> show (failImgs, V.toList imgRows.results)
   pure
@@ -411,5 +477,5 @@ fromArticleRow arow = do
       , attachments
       }
 
-fromImageRow :: ImageRow -> Attachment
+fromImageRow :: ArtImageRow -> Attachment
 fromImageRow img = Attachment {ctype = img.ctype, url = img.link, name = img.name}

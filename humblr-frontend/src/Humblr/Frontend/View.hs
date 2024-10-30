@@ -444,7 +444,7 @@ articleView mode art@Article {..} =
                       [class_ "grid"]
                       [ div_
                           [class_ "cell"]
-                          [ figure_ [class_ "image"] [img_ [src_ img.url, alt_ img.name]]
+                          [ figure_ [class_ "image"] [img_ [src_ $ resouceUrl img.url, alt_ img.name]]
                           ]
                       | img <- attachments
                       ]
@@ -534,7 +534,11 @@ articleOverview arts art@Article {..} =
                                 [class_ "cell"]
                                 [ figure_
                                     [class_ "image"]
-                                    [img_ [src_ img.url, alt_ img.name]]
+                                    [ img_
+                                        [ src_ $ resouceUrl img.url
+                                        , alt_ img.name
+                                        ]
+                                    ]
                                 ]
                             | img <- attachments
                             ]

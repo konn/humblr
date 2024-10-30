@@ -22,11 +22,13 @@ CREATE TABLE IF NOT EXISTS articleImages (
   image_ INTEGER NOT NULL,
   offset INTEGER NOT NULL,
   FOREIGN KEY (article) REFERENCES articles(id),
-  FOREIGN KEY (image_) REFERENCES images(id)
+  FOREIGN KEY (image_) REFERENCES images(id),
+  CONSTRAINT unique_image_offset UNIQUE (article, image_, offset)
 );
 CREATE TABLE IF NOT EXISTS images (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   link TEXT NOT NULL,
-  ctype TEXT NOT NULL
+  ctype TEXT NOT NULL,
+  CONSTRAINT unique_image UNIQUE (link)
 );

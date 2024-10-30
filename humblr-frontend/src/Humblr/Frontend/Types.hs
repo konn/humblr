@@ -52,6 +52,8 @@ module Humblr.Frontend.Types (
   PagedArticles (..),
   toArticleEdition,
   toArticleUpdate,
+  toArticleSeed,
+  resouceUrl,
   Action (..),
   ArticleSeed (..),
   AsRoute,
@@ -91,7 +93,7 @@ import GHC.Wasm.Web.ReadableStream (fromReadableStream)
 import Humblr.Types
 import Language.Javascript.JSaddle hiding (Nullable)
 import Miso
-import Miso.String (MisoString)
+import Miso.String (MisoString, toMisoString)
 import Servant.API
 import Servant.Auth.Client (Token (..))
 import Servant.Client.Core
@@ -168,19 +170,33 @@ data ArticleFragment = ArticleFragment
 
 toArticleUpdate :: T.Text -> ArticleFragment -> JSM ArticleUpdate
 toArticleUpdate slug ArticleFragment {..} = do
-  attachments <- forM (F.toList blobURLs.urls) \EditedAttachment {url = origUrl, ..} -> do
+  attachments <- toAttachments slug blobURLs
+
+  pure ArticleUpdate {tags = F.toList tags, ..}
+
+toAttachments :: T.Text -> BlobURLs -> JSM [Attachment]
+toAttachments slug blobURLs =
+  forM (F.toList blobURLs.urls) \EditedAttachment {url = origUrl, ..} -> do
     url <- case origUrl of
       TempImg url -> do
+        consoleLog $ "Saving image: " <> toMisoString (show (origUrl, name, ctype))
         blob <- liftIO $ await =<< js_fetch (fromText url)
+        consoleLog "Fetched blob"
         src <-
           liftIO $
             nullable (pure mempty) (Q.toStrict_ . fromReadableStream)
               =<< Resp.js_get_body blob
-        callApi $ adminAPI.postImage slug name ctype src
+        consoleLog "Saving blob..."
+        newUri <- callApi $ adminAPI.postImage slug name ctype src
+        consoleLog $ "Saved image as: " <> toMisoString (show newUri)
+        pure newUri
       FixedImg url -> pure url
     pure Attachment {..}
 
-  pure ArticleUpdate {tags = F.toList tags, ..}
+toArticleSeed :: T.Text -> ArticleFragment -> JSM ArticleSeed
+toArticleSeed slug ArticleFragment {..} = do
+  attachments <- toAttachments slug blobURLs
+  pure ArticleSeed {tags = F.toList tags, ..}
 
 toArticleEdition :: Article -> ArticleFragment
 toArticleEdition Article {..} =
@@ -219,7 +235,10 @@ data ImageUrl
 attachmentUrl :: ImageUrl -> MisoString
 attachmentUrl = \case
   TempImg url -> url
-  FixedImg url -> url
+  FixedImg url -> resouceUrl url
+
+resouceUrl :: T.Text -> T.Text
+resouceUrl name = "/" <> toUrlPiece rootApiLinks.resources <> "/" <> name
 
 data EditViewState = Edit | Preview
   deriving (Show, Eq, Generic)
