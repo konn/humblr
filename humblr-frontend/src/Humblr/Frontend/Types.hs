@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ImpredicativeTypes #-}
@@ -32,6 +33,8 @@ module Humblr.Frontend.Types (
   isAdminMode,
   Modal (..),
   ShareInfo (..),
+  BlobURLs (..),
+  ElementId (..),
   TopPage (..),
   AdminPage (..),
   ErrorPage (..),
@@ -54,6 +57,7 @@ module Humblr.Frontend.Types (
   newTagInputId,
   slugFieldId,
   shareAreaId,
+  fileInputId,
 ) where
 
 import Control.Lens
@@ -63,6 +67,9 @@ import Data.Generics.Labels ()
 import Data.Kind (Type)
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
+import Data.Set.Ordered (OSet)
+import Data.Set.Ordered qualified as OSet
+import Data.String (IsString)
 import Data.Text qualified as T
 import Data.Time (UTCTime)
 import GHC.Generics (Generic)
@@ -131,6 +138,7 @@ data NewArticle = MkNewArticle
   , fragment :: !ArticleFragment
   , viewState :: !EditViewState
   , dummyDate :: !UTCTime
+  , blobURLs :: !BlobURLs
   }
   deriving (Show, Generic, Eq)
 
@@ -158,6 +166,7 @@ data EditedArticle = EditedArticle
   { original :: !Article
   , edition :: !ArticleFragment
   , viewState :: !EditViewState
+  , blobURLs :: !BlobURLs
   }
   deriving (Show, Eq, Generic)
 
@@ -229,7 +238,14 @@ data Action
   | DismissModal
   | CopyValueById !MisoString
   | DeleteArticle !MisoString
+  | FileChanged !ElementId
+  | AddBlobURLs !BlobURLs
+  | RemoveBlobURL !MisoString
   deriving (Show, Generic)
+
+newtype ElementId = ElementId {runElementId :: MisoString}
+  deriving (Show, Eq, Ord, Generic)
+  deriving newtype (IsString)
 
 api :: RestApi (AsClientT (FetchT JSM))
 api = (genericClient @RootAPI).apiRoutes
@@ -261,3 +277,10 @@ slugFieldId = "new-slug-id"
 
 shareAreaId :: MisoString
 shareAreaId = "share-message"
+
+fileInputId :: MisoString
+fileInputId = "article-file-input"
+
+newtype BlobURLs = BlobURLs {urls :: OSet T.Text}
+  deriving (Show, Eq, Generic)
+  deriving (Semigroup, Monoid) via OSet.Bias OSet.L (OSet T.Text)

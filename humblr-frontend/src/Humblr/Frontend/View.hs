@@ -24,11 +24,13 @@
 module Humblr.Frontend.View (viewModel) where
 
 import Control.Lens ((^.))
+import Data.Aeson (withObject, (.:))
 import Data.Bool (bool)
 import Data.Char qualified as C
 import Data.Foldable (toList)
 import Data.Foldable qualified as F
 import Data.Generics.Labels ()
+import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, maybeToList)
 import Data.String (fromString)
 import Data.Time (defaultTimeLocale, formatTime)
@@ -273,6 +275,73 @@ editMainView Edit art =
                   ]
               ]
           ]
+      , div_
+          [class_ "field is-horizontal"]
+          [ div_
+              [class_ "field-label"]
+              [label_ [class_ "label"] ["Attachments"]]
+          , div_
+              [class_ "field-body"]
+              [ div_
+                  [class_ "control file is-info has-name"]
+                  [ label_
+                      [class_ "file-label"]
+                      [ input_
+                          [ class_ "file-input"
+                          , id_ fileInputId
+                          , type_ "file"
+                          , accept_ "image/png, image/jpeg"
+                          , multiple_ True
+                          , onChangeId FileChanged
+                          ]
+                      , span_
+                          [class_ "file-cta"]
+                          [ span_ [class_ "file-icon"] [icon "upload_file"]
+                          , span_ [class_ "file-label"] ["Choose…"]
+                          ]
+                      , span_
+                          [class_ "file-name"]
+                          [ if null (art ^. blobURLsL).urls
+                              then "No File"
+                              else text $ toMisoString (length (art ^. blobURLsL).urls) <> " Files"
+                          ]
+                      ]
+                  ]
+              ]
+          ]
+      , div_
+          [class_ "field is-horizontal"]
+          [ div_
+              [class_ "field-label"]
+              [label_ [class_ "label"] [""]]
+          , div_
+              [class_ "field-body"]
+              [ div_
+                  [class_ "control"]
+                  [ p_
+                      [class_ "content"]
+                      [ div_
+                          [class_ "grid"]
+                          [ div_
+                              [ class_ "cell"
+                              ]
+                              [ figure_
+                                  [class_ "image is-128by128"]
+                                  [ img_ [src_ img]
+                                  , a_
+                                      [ class_ "delete is-large"
+                                      , onClick (RemoveBlobURL img)
+                                      , style_ $ Map.fromList [("position", "absolute"), ("top", "5pt"), ("right", "5pt")]
+                                      ]
+                                      []
+                                  ]
+                              ]
+                          | img <- F.toList (art ^. blobURLsL).urls
+                          ]
+                      ]
+                  ]
+              ]
+          ]
       , let btnCls =
               class_ $
                 MS.unwords $
@@ -336,6 +405,15 @@ editMainView Preview art =
         PreviewArticle
       $ currentArticle art
   ]
+
+onChangeId :: (ElementId -> action) -> Attribute action
+onChangeId =
+  on
+    "change"
+    Decoder
+      { decoder = withObject "target" $ \o -> ElementId <$> o .: "id"
+      , decodeAt = DecodeTarget ["target"]
+      }
 
 toEditIcon :: EditViewState -> View Action
 toEditIcon Edit = icon "edit"

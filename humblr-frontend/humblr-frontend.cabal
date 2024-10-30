@@ -60,6 +60,7 @@ library
     jsaddle,
     lens,
     miso,
+    ordered-containers,
     safe-exceptions,
     servant,
     servant-auth-lite-client,

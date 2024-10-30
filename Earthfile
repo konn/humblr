@@ -26,7 +26,6 @@ build-all:
 
 build:
   FROM +build-all
-  BUILD  --platform=linux/amd64 +build-all
   ARG target
   ARG outdir=$(echo ${target} | cut -d: -f3)
   ARG wasm=${outdir}.wasm
@@ -97,6 +96,7 @@ build-worker:
   SAVE ARTIFACT ./dist
 
 all:
+  BUILD  --platform=linux/amd64 +build-all
   # Build database worker
   BUILD --platform=linux/amd64 +build-worker --target=humblr-database --wasm=worker.wasm
   COPY (+build-worker/dist --target=humblr-database) ./dist/database

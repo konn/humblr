@@ -101,7 +101,6 @@ resources :: Worker HumblrEnv Raw
 resources = Cache.serveCachedRaw assetCacheOptions $ Tagged \req env _ -> do
   let storage = Raw.getBinding "Storage" env
       pth = T.intercalate "/" req.pathInfo
-  consoleLog $ fromText $ "Fetching resource: " <> pth
   resp <- await' =<< storage.get pth
   maybe (toWorkerResponse $ responseServerError err404 {errBody = "Not Found: " <> TE.encodeUtf8 (Req.getUrl req.rawRequest)}) pure resp
 
@@ -206,6 +205,3 @@ listArticles :: Maybe Word -> App [Article]
 listArticles mpage = do
   db <- getBinding "Database"
   liftIO $ await' =<< db.listArticles mpage
-
-foreign import javascript unsafe "console.log($1)"
-  consoleLog :: USVString -> IO ()

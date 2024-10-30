@@ -42,28 +42,31 @@ module Humblr.Frontend.Actions (
   HasArticles (..),
   articleAction,
   articlesT,
+  BlobURLs (..),
 ) where
 
 import Control.Exception.Safe (Exception (..), tryAny)
 import Control.Lens hiding ((#))
-import Control.Monad (forM_)
+import Control.Monad (forM, forM_)
 import Control.Monad.IO.Class (liftIO)
 import Data.Foldable qualified as F
 import Data.Functor (void)
 import Data.Generics.Labels ()
-import Data.Maybe (fromMaybe)
+import Data.Maybe (catMaybes, fromMaybe)
 import Data.Proxy (Proxy (..))
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
+import Data.Set.Ordered qualified as OSet
 import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, getCurrentTime)
 import Data.Time.Format (formatTime)
+import Data.Vector qualified as V
 import GHC.Base (Proxy#, proxy#)
 import GHC.Generics (Generic)
 import Humblr.CMark (getSummary)
 import Humblr.CMark qualified as CM
 import Humblr.Frontend.Types
-import Language.Javascript.JSaddle (getProp, isUndefined, setProp, toJSVal_aeson, val, (#))
+import Language.Javascript.JSaddle (FromJSVal (..), getProp, isUndefined, jsf, setProp, toJSVal_aeson, val, (#))
 import Language.Javascript.JSaddle qualified as JSM
 import Language.Javascript.JSaddle.Evaluate (eval)
 import Language.Javascript.JSaddle.Object (Object (..))
@@ -113,6 +116,7 @@ updateModel (ShowEditArticle article) m =
               { original = article
               , edition = toArticleEdition article
               , viewState = Edit
+              , blobURLs = mempty
               }
       }
 updateModel (SetEditingArticleContent f) m =
@@ -191,6 +195,7 @@ updateModel (ShowNewArticle stamp) m =
                   ArticleFragment {body = mempty, tags = mempty, newTag = "", composingTag = False}
               , viewState = Edit
               , dummyDate = stamp
+              , blobURLs = mempty
               }
       }
 updateModel (OpenTagArticles tag mcur) m =
@@ -262,6 +267,31 @@ updateModel (DeleteArticle slug) m =
     case eith of
       Right NoContent -> pure $ openAdminPage Nothing
       Left err -> pure $ ShowErrorNotification (MkErrorMessage "Could not delete article" $ toMisoString $ displayException err) Nothing
+updateModel (FileChanged (ElementId eid)) m =
+  m <# do
+    eith <- tryAny $ getElementById eid
+    resl <- forM eith \file -> do
+      consoleLog "File changed!"
+      files <- getProp "files" (Object file)
+      numFiles <- fmap (fromMaybe 0) . fromJSVal =<< getProp "length" (Object files)
+      if numFiles <= 0
+        then pure NoOp
+        else do
+          consoleLog $ "Number of files: " <> toMisoString (show numFiles)
+          urls <- V.generateM numFiles \i -> do
+            fromJSVal
+              =<< (\f -> eval ("URL" :: String) ^. jsf ("createObjectURL" :: String) f)
+              =<< files ^. jsf ("item" :: String) (val i)
+
+          consoleLog $ "URLs: " <> toMisoString (show urls)
+          empStr <- val ("" :: T.Text)
+          setProp "value" empStr (Object file)
+          pure $ AddBlobURLs $ BlobURLs $ OSet.fromList $ catMaybes $ V.toList urls
+    either (const $ pure NoOp) pure resl
+updateModel (AddBlobURLs urls) m =
+  noEff $ m & #mode . blobURLsT <>~ urls
+updateModel (RemoveBlobURL url) m =
+  noEff $ m & #mode . blobURLsT . #urls %~ OSet.delete url
 
 withArticles :: Maybe Word -> (PagedArticles -> JSM Action) -> JSM Action
 withArticles mcur k = do
@@ -354,6 +384,7 @@ class HasEditView a where
   currentArticle :: a -> Article
   saveAction# :: Proxy# a -> Action
   cancelAction :: a -> Action
+  blobURLsL :: Lens' a BlobURLs
 
 slugG :: (HasEditView a) => Getter a MisoString
 {-# INLINE slugG #-}
@@ -383,6 +414,7 @@ instance HasEditView EditedArticle where
       }
   saveAction# _ = SaveEditingArticle
   cancelAction = openArticle . (.original.slug)
+  blobURLsL = #blobURLs
 
 instance HasEditView NewArticle where
   viewStateL = #viewState
@@ -400,6 +432,7 @@ instance HasEditView NewArticle where
       }
   saveAction# _ = CreateNewArticle
   cancelAction _ = openTopPage Nothing
+  blobURLsL = #blobURLs
 
 saveAction :: forall state -> (HasEditView state) => Action
 {-# INLINE saveAction #-}
@@ -457,3 +490,9 @@ articlesT =
         (#_TagArticles . articlesL)
     )
     (#_AdminPage . articlesL)
+
+blobURLsT :: Traversal' Mode BlobURLs
+blobURLsT =
+  failing
+    (#_EditingArticle . blobURLsL)
+    (#_CreatingArticle . blobURLsL)
