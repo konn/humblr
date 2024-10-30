@@ -256,6 +256,12 @@ updateModel (CopyValueById eid) m =
       msg <- getProp "value" (Object field)
       void $ JSM.liftJSM $ clip JSM.# ("writeText" :: String) $ msg
     pure NoOp
+updateModel (DeleteArticle slug) m =
+  m <# do
+    eith <- tryAny $ callApi (adminAPI.deleteArticle slug)
+    case eith of
+      Right NoContent -> pure $ openAdminPage Nothing
+      Left err -> pure $ ShowErrorNotification (MkErrorMessage "Could not delete article" $ toMisoString $ displayException err) Nothing
 
 withArticles :: Maybe Word -> (PagedArticles -> JSM Action) -> JSM Action
 withArticles mcur k = do

@@ -196,27 +196,48 @@ generalEditView ea =
               ]
                 <> editMainView (ea ^. viewStateL) ea
           , div_
-              [class_ "field is-grouped is-grouped-right"]
-              [ -- TODO: Confirm before cancel
-                div_
-                  [class_ "control"]
-                  [ button_
-                      [ class_ "button is-light"
-                      , onClick $ openArticle $ ea ^. slugG
+              [class_ "level"]
+              [ div_
+                  [class_ "level-left"]
+                  [ div_
+                      [class_ "level-item"]
+                      [ div_
+                          [class_ "field"]
+                          [ div_
+                              [class_ "control"]
+                              [ button_
+                                  [class_ "button is-danger", onClick $ DeleteArticle curSlug]
+                                  [icon "delete"]
+                              ]
+                          ]
                       ]
-                      ["Cancel"]
                   ]
               , div_
-                  [class_ "control"]
-                  [ button_
-                      ( if isValidArticle
-                          then
-                            [ class_ "button is-primary"
-                            , onClick $ saveAction state
-                            ]
-                          else [class_ "button is-disabled", disabled_ True]
-                      )
-                      ["Submit"]
+                  [class_ "level-right"]
+                  [ div_
+                      [class_ "level-item field is-grouped is-grouped-right"]
+                      [ -- TODO: Confirm before cancel
+                        div_
+                          [class_ "control"]
+                          [ button_
+                              [ class_ "button is-light"
+                              , onClick $ openArticle $ ea ^. slugG
+                              ]
+                              ["Cancel"]
+                          ]
+                      , div_
+                          [class_ "control"]
+                          [ button_
+                              ( if isValidArticle
+                                  then
+                                    [ class_ "button is-primary"
+                                    , onClick $ saveAction state
+                                    ]
+                                  else [class_ "button is-disabled", disabled_ True]
+                              )
+                              ["Submit"]
+                          ]
+                      ]
                   ]
               ]
           ]

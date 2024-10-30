@@ -228,6 +228,7 @@ data Action
   | ShowModal !Modal
   | DismissModal
   | CopyValueById !MisoString
+  | DeleteArticle !MisoString
   deriving (Show, Generic)
 
 api :: RestApi (AsClientT (FetchT JSM))

@@ -12,5 +12,16 @@
     "cabal*.project*": "cabal"
   },
   "haskell.formattingProvider": "fourmolu",
-  "haskell.sessionLoading": "multipleComponents"
+  "haskell.sessionLoading": "multipleComponents",
+  "files.exclude": {
+    "**/.git": true,
+    "**/.svn": true,
+    "**/.hg": true,
+    "**/CVS": true,
+    "**/.DS_Store": true,
+    "**/Thumbs.db": true,
+    "**/.ruby-lsp": true,
+    "**/.wrangler": true,
+    "**/.tmp-earthly-out": true
+  }
 }

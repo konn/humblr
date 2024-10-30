@@ -1,9 +1,9 @@
 packages: humblr-*/*.cabal
 with-compiler: wasm32-wasi-9.10.1
 import: cabal-common.project
-optimization: 2
 jobs: $ncpus
 semaphore: True
+optimization: 2
 
 source-repository-package
   type: git
