@@ -67,9 +67,11 @@ library
     servant-auth-lite-client,
     servant-client-core,
     servant-client-fetch,
+    streaming-bytestring,
     text,
     time,
     vector,
+    web-sys-hs,
 
   hs-source-dirs: src
   -- cabal-gild: discover src --exclude=src/**/Internal.hs --exclude=src/**/Internal/**/*.hs

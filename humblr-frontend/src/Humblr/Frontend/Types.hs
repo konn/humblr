@@ -67,6 +67,8 @@ module Humblr.Frontend.Types (
 
 import Control.Arrow ((&&&))
 import Control.Lens
+import Control.Monad (forM)
+import Control.Monad.IO.Class (MonadIO (..))
 import Data.Aeson (FromJSON, ToJSON)
 import Data.ByteString qualified as BS
 import Data.Foldable qualified as F
@@ -82,8 +84,12 @@ import Data.String (IsString)
 import Data.Text qualified as T
 import Data.Time (UTCTime)
 import GHC.Generics (Generic)
+import GHC.Wasm.Object.Builtins hiding (inject)
+import GHC.Wasm.Web.Generated.Response (ResponseClass)
+import GHC.Wasm.Web.Generated.Response qualified as Resp
+import GHC.Wasm.Web.ReadableStream (fromReadableStream)
 import Humblr.Types
-import Language.Javascript.JSaddle
+import Language.Javascript.JSaddle hiding (Nullable)
 import Miso
 import Miso.String (MisoString)
 import Servant.API
@@ -91,6 +97,7 @@ import Servant.Auth.Client (Token (..))
 import Servant.Client.Core
 import Servant.Client.FetchAPI
 import Servant.Client.Generic (genericClient)
+import Streaming.ByteString qualified as Q
 
 initialModel :: Model
 initialModel =
@@ -159,8 +166,21 @@ data ArticleFragment = ArticleFragment
   }
   deriving (Show, Eq, Generic)
 
-toArticleUpdate :: ArticleFragment -> ArticleUpdate
-toArticleUpdate ArticleFragment {..} = ArticleUpdate {tags = F.toList tags, ..}
+toArticleUpdate :: T.Text -> ArticleFragment -> JSM ArticleUpdate
+toArticleUpdate slug ArticleFragment {..} = do
+  attachments <- forM (F.toList blobURLs.urls) \EditedAttachment {url = origUrl, ..} -> do
+    url <- case origUrl of
+      TempImg url -> do
+        blob <- liftIO $ await =<< js_fetch (fromText url)
+        src <-
+          liftIO $
+            nullable (pure mempty) (Q.toStrict_ . fromReadableStream)
+              =<< Resp.js_get_body blob
+        callApi $ adminAPI.postImage slug name ctype src
+      FixedImg url -> pure url
+    pure Attachment {..}
+
+  pure ArticleUpdate {tags = F.toList tags, ..}
 
 toArticleEdition :: Article -> ArticleFragment
 toArticleEdition Article {..} =
@@ -175,7 +195,6 @@ data EditedArticle = EditedArticle
   { original :: !Article
   , edition :: !ArticleFragment
   , viewState :: !EditViewState
-  , blobURLs :: !BlobURLs
   }
   deriving (Show, Eq, Generic)
 
@@ -330,3 +349,8 @@ newtype BlobURLs = BlobURLs {urls :: OMap T.Text EditedAttachment}
 
 instance Monoid BlobURLs where
   mempty = BlobURLs OM.empty
+
+foreign import javascript safe "fetch($1)"
+  js_fetch ::
+    USVString ->
+    IO (Promise ResponseClass)

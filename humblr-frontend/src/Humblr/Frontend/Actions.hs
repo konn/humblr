@@ -117,7 +117,6 @@ updateModel (ShowEditArticle article) m =
               { original = article
               , edition = toArticleEdition article
               , viewState = Edit
-              , blobURLs = mempty
               }
       }
 updateModel (SetEditingArticleContent f) m =
@@ -141,10 +140,10 @@ updateModel SaveEditingArticle m =
     `batchEff` [ do
                   eith <-
                     tryAny $
-                      callApi $
-                        (api.adminAPI (CloudflareToken Nothing)).putArticle
+                      callApi
+                        . (api.adminAPI (CloudflareToken Nothing)).putArticle
                           original.slug
-                          (toArticleUpdate edition)
+                        =<< toArticleUpdate original.slug edition
                   case eith of
                     Left err ->
                       pure $
@@ -417,11 +416,11 @@ instance HasEditView EditedArticle where
       , slug = art.original.slug
       , createdAt = art.original.createdAt
       , body = art.edition.body
-      , attachments = map fromEditedAttachment $ F.toList art.blobURLs.urls
+      , attachments = map fromEditedAttachment $ F.toList art.edition.blobURLs.urls
       }
   saveAction# _ = SaveEditingArticle
   cancelAction = openArticle . (.original.slug)
-  blobURLsL = #blobURLs
+  blobURLsL = #edition . #blobURLs
 
 instance HasEditView NewArticle where
   viewStateL = #viewState

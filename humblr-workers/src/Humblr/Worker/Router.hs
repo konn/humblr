@@ -29,7 +29,6 @@ import Data.Maybe (fromMaybe)
 import Data.String (fromString)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import GHC.Wasm.Object.Builtins
 import GHC.Wasm.Web.ReadableStream (ReadableStream)
 import Humblr.Types
@@ -39,7 +38,6 @@ import Network.Cloudflare.Worker.Binding hiding (getBinding, getSecret)
 import Network.Cloudflare.Worker.Binding qualified as Raw
 import Network.Cloudflare.Worker.Binding.Assets (AssetsClass)
 import Network.Cloudflare.Worker.Binding.Assets qualified as RawAssets
-import Network.Cloudflare.Worker.Crypto (randomUUID)
 import Network.Cloudflare.Worker.Request qualified as Req
 import Network.URI
 import Servant.Auth.Cloudflare.Workers
@@ -156,13 +154,13 @@ apiRoutes =
 instance (HasWorker e api ctxs) => HasWorker e (Image :> api) ctxs where
   type
     WorkerT e (Image :> api) m =
-      ImageType -> ReadableStream -> WorkerT e api m
+      ReadableStream -> WorkerT e api m
   hoistWorkerWithContext pe _ pctx hoist s =
-    fmap (hoistWorkerWithContext pe (Proxy @api) pctx hoist) . s
+    hoistWorkerWithContext pe (Proxy @api) pctx hoist . s
 
   route pe Proxy context subserver =
     route pe (Proxy :: Proxy api) context $
-      addBodyCheck (uncurry <$> subserver) ctCheck pure
+      addBodyCheck subserver ctCheck pure
     where
       ctCheck = withRequest $ \request _ _ -> do
         let cty =
@@ -170,36 +168,11 @@ instance (HasWorker e api ctxs) => HasWorker e (Image :> api) ctxs where
                 map (Bi.first CI.mk) . Req.getHeaders $
                   request.rawRequest
         case (`lookup` [("image/png", Png), ("image/jpeg", Jpeg)]) =<< cty of
-          Just ct ->
+          Just {} ->
             case fromNullable $ Req.getBody request.rawRequest of
-              Just body -> pure (ct, body)
+              Just body -> pure body
               Nothing -> delayedFail err400
           Nothing -> delayedFail err415
-
--- withRequest $ \request _ _ -> do
-{-
-      -- Content-Type check, we only lookup we can try to parse the request body
-      ctCheck = withRequest $ \request _ _ -> do
-        -- See HTTP RFC 2616, section 7.2.1
-        -- http://www.w3.org/Protocols/rfc2616/rfc2616-sec7.html#sec7.2.1
-        -- See also "W3C Internet Media Type registration, consistency of use"
-        -- http://www.w3.org/2001/tag/2002/0129-mime
-        let contentTypeH =
-              fromMaybe "application/octet-stream" $
-                lookup hContentType $
-                  requestHeaders request.rawRequest
-        case canHandleCTypeH (Proxy :: Proxy list) (BSL.fromStrict contentTypeH) :: Maybe (BSL.ByteString -> Either String a) of
-          Nothing -> delayedFail err415
-          Just f -> return f
-
-      -- Body check, we get a body parsing functions as the first argument.
-      bodyCheck f = withRequest $ \request _ _ -> do
-        mrqbody <- f <$> liftIO (lazyRequestBody request.rawRequest)
-        case sbool :: SBool (FoldLenient mods) of
-          STrue -> return mrqbody
-          SFalse -> case mrqbody of
-            Left e -> delayedFailFatal $ formatError rep request.rawRequest e
-            Right v -> return v -}
 
 adminAPI :: AuthResult User -> AdminAPI (AsWorker HumblrEnv)
 adminAPI usr =
@@ -211,17 +184,10 @@ adminAPI usr =
     , postImage = putResource usr
     }
 
-putResource :: AuthResult User -> ImageType -> ReadableStream -> Handler HumblrEnv T.Text
-putResource user ity body = protectIfConfigured user $ do
+putResource :: AuthResult User -> T.Text -> T.Text -> ReadableStream -> Handler HumblrEnv T.Text
+putResource user slug name body = protectIfConfigured user $ do
   storage <- getBinding "Storage"
-  now <- liftIO getCurrentTime
-  nonce <- liftIO randomUUID
-  let pth =
-        T.pack (formatTime defaultTimeLocale "%Y%m%d-%H%M%S-" now)
-          <> nonce
-          <> toExtension ity
-  liftIO $ await' =<< storage.put pth body
-  pure pth
+  liftIO $ await' =<< storage.put slug name body
 
 putArticle :: AuthResult User -> T.Text -> ArticleUpdate -> Handler HumblrEnv NoContent
 putArticle user slug upd = protectIfConfigured user do

@@ -44,7 +44,7 @@ type App = ServiceM StorageEnv '[]
 
 data StorageServiceFuns = StorageServiceFuns
   { get :: T.Text -> App (Maybe WorkerResponse)
-  , put :: T.Text -> ReadableStream -> App ()
+  , put :: T.Text -> T.Text -> ReadableStream -> App T.Text
   }
   deriving (Generic)
   deriving anyclass (ToService StorageEnv)
@@ -98,11 +98,13 @@ get name = do
           PL.. setPartialField "encodeBody" automatic
           PL.. setPartialField "cf" empty
 
-put :: T.Text -> ReadableStream -> App ()
-put name body = do
+put :: T.Text -> T.Text -> ReadableStream -> App T.Text
+put slug path body = do
+  let name = slug <> "/" <> path
   r2 <- getBinding "R2"
   liftIO do
     void $
       maybe (throwIO $ ResourceNotFound name) pure
         =<< await'
         =<< R2.put r2 (TE.encodeUtf8 name) (nonNull $ inject body)
+  pure name

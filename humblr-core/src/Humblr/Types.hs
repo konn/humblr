@@ -145,12 +145,19 @@ data AdminAPI mode = AdminAPI
       mode :- "articles" :> Capture "slug" T.Text :> ReqBody '[JSON] ArticleUpdate :> Put '[JSON] NoContent
   , deleteArticle ::
       mode :- "articles" :> Capture "slug" T.Text :> Delete '[JSON] NoContent
-  , putImage :: mode :- "resources" :> Image :> Put '[PlainText] T.Text
-  , postImage :: mode :- "resources" :> Image :> Post '[PlainText] T.Text
+  , putImage :: mode :- PutResource 'PUT
+  , postImage :: mode :- PutResource 'POST
   }
   deriving (Generic)
 
-data ArticleUpdate = ArticleUpdate {body :: T.Text, tags :: [T.Text]}
+type PutResource meth =
+  "resources"
+    :> Capture "slug" T.Text
+    :> Capture "name" T.Text
+    :> Image
+    :> Verb meth 200 '[PlainText] T.Text
+
+data ArticleUpdate = ArticleUpdate {body :: T.Text, tags :: [T.Text], attachments :: [Attachment]}
   deriving stock (Generic, Show, Eq)
   deriving anyclass (FromJSON, ToJSON)
   deriving (IsServiceArg) via ViaJSON ArticleUpdate
