@@ -142,12 +142,14 @@ updateArticle toArtId slug ArticleUpdate {..} = do
   artId <- parseAid rest
   unless (null tagIds) $
     void $
-      liftIO . D1.batch d1
+      waitUntil . jsPromise
+        =<< liftIO . D1.batch d1
         =<< mapM (bind tagArtQ artId) tagIds
   delImgs <- bind delArtImgQ artId
   unless (null imgIds) $
     void $
-      liftIO . D1.batch d1 . (V.cons delImgs)
+      waitUntil . jsPromise
+        =<< liftIO . D1.batch d1 . (V.cons delImgs)
         =<< V.imapM (bind artImgQ artId . fromIntegral) imgIds
 
 deleteArticle :: T.Text -> App ()
