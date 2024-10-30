@@ -46,7 +46,7 @@ nodeToPlainText = para \cases
   (Node _ SOFTBREAK _) _ -> " "
   (Node _ LINEBREAK _) _ -> "\n"
   (Node _ THEMATIC_BREAK _) _ -> "\n"
-  (Node _ PARAGRAPH _) ps -> foldMap (<> "\n\n") ps <> "\n"
+  (Node _ PARAGRAPH _) ps -> fold ps <> "\n"
   (Node _ BLOCK_QUOTE _) ps -> fold ps
   (Node _ HTML_BLOCK {} _) _ -> mempty
   (Node _ HTML_INLINE {} _) _ -> mempty

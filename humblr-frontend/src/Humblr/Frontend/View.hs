@@ -54,7 +54,44 @@ viewModel m@Model {..} =
             ]
         | MkErrorMessage {..} <- maybeToList errorMessage
         ]
+      ++ [modalView v | v <- maybeToList modal]
       ++ [footerView]
+
+modalView :: Modal -> View Action
+modalView (Share ShareInfo {title, url}) =
+  div_
+    [class_ "modal is-active"]
+    [ div_ [class_ "modal-background", onClick DismissModal] []
+    , div_
+        [class_ "modal-content"]
+        [ div_
+            [class_ "box"]
+            [ div_
+                [class_ "level"]
+                [ div_ [class_ "level-left"] [h3_ [class_ "title level-item"] ["Share"]]
+                , div_
+                    [class_ "level-right"]
+                    [button_ [class_ "button is-primary level-item", onClick $ CopyValueById shareAreaId] [icon "content_copy"]]
+                ]
+            , div_
+                [class_ "field"]
+                [ div_
+                    [class_ "control"]
+                    [ textarea_
+                        [class_ "textarea", readonly_ True, id_ shareAreaId]
+                        [text $ title <> "\n" <> toMisoString (show url)]
+                    ]
+                ]
+            , div_
+                [class_ "field is-grouped is-grouped-right"]
+                [ div_
+                    [class_ "control"]
+                    [button_ [class_ "button is-primary", onClick DismissModal] ["Close"]]
+                ]
+            ]
+        ]
+    , button_ [class_ "modal-close is-large", P "aria-label" "close", onClick DismissModal] []
+    ]
 
 mainView :: Model -> [View Action]
 mainView m = case m.mode of
@@ -104,7 +141,11 @@ editView ea@EditedArticle {..} =
   h2_ [class_ "title"] [text "Editing ", code_ [] [text original.slug]]
     : generalEditView ea
 
-generalEditView :: forall state. (HasEditView state) => state -> [View Action]
+generalEditView ::
+  forall state.
+  (HasEditView state) =>
+  state ->
+  [View Action]
 generalEditView ea =
   let curSlug = ea ^. slugG
       isValidArticle =
@@ -139,10 +180,12 @@ generalEditView ea =
                           [class_ "field"]
                           [ div_
                               [class_ "control  has-icons-left"]
-                              [ input_
+                              [ input_ $
                                   [ class_ "input"
                                   , type_ "input"
                                   , onInput $ SetEditedSlug . MS.strip
+                                  , id_ slugFieldId
+                                  , onCreated $ SetFieldValue slugFieldId $ ea ^. slugG
                                   ]
                               , iconLeft "link"
                               ]
@@ -278,7 +321,7 @@ toEditIcon Edit = icon "edit"
 toEditIcon Preview = icon "play_circle"
 
 articleView :: ArticleViewMode -> Article -> [View Action]
-articleView mode Article {..} =
+articleView mode art@Article {..} =
   let linkToArticle =
         case mode of
           FrontEndArticle -> a_ [onClick $ openArticle slug]
@@ -296,20 +339,38 @@ articleView mode Article {..} =
           ]
    in [ div_
           [class_ "box is-four-fifth"]
-          [ div_
-              [class_ "content is-size-3"]
-              [rawHtml $ CM.commonmarkToHtml [] body]
-          , nav_
-              [class_ "level"]
-              [ div_
-                  [class_ "level-left"]
-                  [ tagsView
+          $ [ div_
+                [class_ "content is-size-3"]
+                [rawHtml $ CM.commonmarkToHtml [] body]
+            ]
+            <> [ nav_
+                  [class_ "level"]
+                  [ div_ [class_ "level-left"] []
+                  , div_
+                      [class_ "level-right"]
+                      [ button_
+                          [ class_ "level-item button is-rounded is-primary is-small"
+                          , onClick $ ShareArticle art
+                          ]
+                          [iconSmall "share"]
+                      ]
                   ]
-              , div_
-                  [class_ "level-right"]
-                  [linkToArticle [small_ [] [text "Posted ", fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" createdAt]]]
-              ]
-          ]
+               | mode == FrontEndArticle
+               ]
+            <> [ nav_
+                  [class_ "level"]
+                  [ div_
+                      [class_ "level-left"]
+                      [ div_ [class_ "level-item"] [tagsView]
+                      ]
+                  , div_
+                      [class_ "level-right"]
+                      [ div_
+                          [class_ "level-item"]
+                          [linkToArticle [small_ [] [text "Posted ", fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" createdAt]]]
+                      ]
+                  ]
+               ]
       ]
 
 linkToTag :: ArticleViewMode -> MisoString -> [View Action] -> View Action
@@ -422,6 +483,16 @@ icon :: MisoString -> View a
 icon name =
   span_
     [class_ "icon"]
+    [ span_
+        [ class_ "material-symbols-outlined"
+        ]
+        [text name]
+    ]
+
+iconSmall :: MisoString -> View a
+iconSmall name =
+  span_
+    [class_ "icon is-small mdi"]
     [ span_
         [ class_ "material-symbols-outlined"
         ]

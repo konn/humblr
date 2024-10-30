@@ -45,9 +45,11 @@ module Humblr.Frontend.Actions (
 ) where
 
 import Control.Exception.Safe (Exception (..), tryAny)
-import Control.Lens
+import Control.Lens hiding ((#))
+import Control.Monad (forM_)
 import Control.Monad.IO.Class (liftIO)
 import Data.Foldable qualified as F
+import Data.Functor (void)
 import Data.Generics.Labels ()
 import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
@@ -58,16 +60,27 @@ import Data.Time (defaultTimeLocale, getCurrentTime)
 import Data.Time.Format (formatTime)
 import GHC.Base (Proxy#, proxy#)
 import GHC.Generics (Generic)
+import Humblr.CMark (getSummary)
+import Humblr.CMark qualified as CM
 import Humblr.Frontend.Types
-import Language.Javascript.JSaddle (setProp, val)
+import Language.Javascript.JSaddle (getProp, isUndefined, setProp, toJSVal_aeson, val, (#))
+import Language.Javascript.JSaddle qualified as JSM
+import Language.Javascript.JSaddle.Evaluate (eval)
 import Language.Javascript.JSaddle.Object (Object (..))
 import Miso
 import Miso.String (MisoString, ToMisoString (..))
 import Miso.String qualified as MisoString
 import Network.HTTP.Types (status404)
-import Servant.API
+import Servant.API (
+  NoContent (NoContent),
+  ToServantApi,
+  toServant,
+  toUrlPiece,
+ )
 import Servant.Auth.Client (Token (CloudflareToken))
 import Servant.Client.FetchAPI
+
+default (T.Text)
 
 updateModel :: Action -> Model -> Effect Action Model
 updateModel NoOp m = noEff m
@@ -209,6 +222,40 @@ updateModel (ShowErrorPage title message) m =
   noEff m {mode = ErrorPage MkErrorPage {..}}
 updateModel (SetEditedSlug slg) m =
   noEff $ m & #mode . #_CreatingArticle . #slug .~ slg
+updateModel (SetFieldValue fid v) m =
+  m <# do
+    field <- getElementById fid
+    emp <- val v
+    setProp "value" emp $ Object field
+    pure NoOp
+updateModel (ShareArticle art) m =
+  m <# do
+    share <- eval ("navigator.share" :: String)
+    absent <- ghcjsPure $ isUndefined share
+    rootUri <-
+      getCurrentURI
+        <&> #uriPath .~ ""
+        <&> #uriQuery .~ ""
+        <&> #uriFragment .~ ""
+    let url =
+          rootUri {uriPath = "/" <> T.unpack (toUrlPiece $ rootApiLinks.frontend.articlePage art.slug)}
+        title = CM.nodeToPlainText $ (fromMaybe <$> id <*> getSummary) $ CM.commonmarkToNode [] art.body
+        shareDesc = ShareInfo {text = title, ..}
+    if absent
+      then pure $ ShowModal $ Share shareDesc
+      else do
+        shared <- toJSVal_aeson shareDesc
+        NoOp <$ (eval ("navigator" :: String) # ("share" :: String) $ shared)
+updateModel (ShowModal modal) m = noEff m {modal = Just modal}
+updateModel DismissModal m = noEff m {modal = Nothing}
+updateModel (CopyValueById eid) m =
+  m <# do
+    eith <- tryAny $ getElementById eid
+    forM_ eith $ \field -> do
+      clip <- JSM.eval ("navigator.clipboard" :: String)
+      msg <- getProp "value" (Object field)
+      void $ JSM.liftJSM $ clip JSM.# ("writeText" :: String) $ msg
+    pure NoOp
 
 withArticles :: Maybe Word -> (PagedArticles -> JSM Action) -> JSM Action
 withArticles mcur k = do

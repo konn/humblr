@@ -1,5 +1,7 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ImpredicativeTypes #-}
@@ -28,6 +30,8 @@ module Humblr.Frontend.Types (
   initialModel,
   Mode (..),
   isAdminMode,
+  Modal (..),
+  ShareInfo (..),
   TopPage (..),
   AdminPage (..),
   ErrorPage (..),
@@ -48,9 +52,12 @@ module Humblr.Frontend.Types (
   module Humblr.Types,
   adminAPI,
   newTagInputId,
+  slugFieldId,
+  shareAreaId,
 ) where
 
 import Control.Lens
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Foldable qualified as F
 import Data.Generics.Labels ()
 import Data.Kind (Type)
@@ -73,6 +80,7 @@ initialModel =
   Model
     { mode = Idle
     , errorMessage = Nothing
+    , modal = Nothing
     }
 
 data ErrorMessage = MkErrorMessage {title, message :: MisoString}
@@ -168,7 +176,18 @@ data ErrorPage = MkErrorPage
   }
   deriving (Show, Generic, Eq)
 
-data Model = Model {mode :: !Mode, errorMessage :: !(Maybe ErrorMessage)}
+data Model = Model
+  { mode :: !Mode
+  , errorMessage :: !(Maybe ErrorMessage)
+  , modal :: !(Maybe Modal)
+  }
+  deriving (Show, Generic, Eq)
+
+data ShareInfo = ShareInfo {url :: !URI, title :: !T.Text, text :: !T.Text}
+  deriving (Show, Generic, Eq)
+  deriving anyclass (ToJSON, FromJSON)
+
+data Modal = Share !ShareInfo
   deriving (Show, Generic, Eq)
 
 {- Note [Naming convention]
@@ -204,6 +223,11 @@ data Action
   | DismissError
   | ShowErrorPage !MisoString !MisoString
   | NoOp
+  | SetFieldValue !MisoString !MisoString
+  | ShareArticle !Article
+  | ShowModal !Modal
+  | DismissModal
+  | CopyValueById !MisoString
   deriving (Show, Generic)
 
 api :: RestApi (AsClientT (FetchT JSM))
@@ -230,3 +254,9 @@ callApi act = do
 
 newTagInputId :: MisoString
 newTagInputId = "new-tag-input"
+
+slugFieldId :: MisoString
+slugFieldId = "new-slug-id"
+
+shareAreaId :: MisoString
+shareAreaId = "share-message"

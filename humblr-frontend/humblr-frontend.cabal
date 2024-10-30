@@ -49,6 +49,7 @@ common defaults
 library
   import: defaults
   build-depends:
+    aeson,
     cmark,
     containers,
     generic-lens,
