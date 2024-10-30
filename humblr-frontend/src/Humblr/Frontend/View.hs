@@ -86,7 +86,7 @@ modalView (Share ShareInfo {title, url}) =
                 [class_ "field is-grouped is-grouped-right"]
                 [ div_
                     [class_ "control"]
-                    [button_ [class_ "button is-primary", onClick DismissModal] ["Close"]]
+                    [button_ [class_ "button is-link", onClick DismissModal] ["Close"]]
                 ]
             ]
         ]
