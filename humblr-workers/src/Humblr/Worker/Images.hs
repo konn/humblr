@@ -25,7 +25,7 @@ import Data.Char qualified as C
 import Data.Text qualified as T
 import GHC.Generics
 import GHC.Wasm.Object.Builtins
-import GHC.Wasm.Web.JSON (encodeJSON)
+import GHC.Wasm.Web.JSON (encodeJSON, stringify)
 import Humblr.Frontend.Types
 import Network.Cloudflare.Worker.Binding (BindingsClass)
 import Network.Cloudflare.Worker.Binding.Service
@@ -82,13 +82,15 @@ instance A.ToJSON ImageMetadata where
 
 data ImageOption = ImageOption {height, width :: !(Maybe Word), metadata :: !(Maybe ImageMetadata), fit :: !(Maybe Fit)}
   deriving (Show, Eq, Ord, Generic)
-  deriving anyclass (A.ToJSON)
+
+instance A.ToJSON ImageOption where
+  toJSON = A.genericToJSON A.defaultOptions {A.omitNothingFields = True}
 
 large :: T.Text -> App WorkerResponse
 large =
   withImageOptions
     ImageOption
-      { width = Just 1024
+      { width = Just 768
       , height = Nothing
       , metadata = Just None
       , fit = Just ScaleDown
@@ -124,6 +126,18 @@ withImageOptions opts path
       liftIO do
         meth <- fromHaskellByteString "GET"
         imgOpts <- encodeJSON opts
+        let cf =
+              newDictionary
+                PL.$ setPartialField "image"
+                $ nonNull
+                $ nonNull
+                $ upcast imgOpts
+            reqInit =
+              newDictionary
+                PL.$ setPartialField "method" (nonNull meth)
+                PL.. setPartialField "cf" (nonNull cf)
+        consoleLog =<< stringify (unsafeCast cf)
+        consoleLog =<< stringify (unsafeCast reqInit)
         req <-
           Req.newRequest
             ( Just $
@@ -134,18 +148,7 @@ withImageOptions opts path
                   , T.dropWhile (== '/') path
                   ]
             )
-            $ Just
-            $ newDictionary
-              PL.$ setPartialField "method" (nonNull meth)
-              PL.. setPartialField
-                "cf"
-                ( nonNull
-                    $ newDictionary
-                      PL.$ setPartialField "image"
-                    $ nonNull
-                    $ nonNull
-                    $ upcast imgOpts
-                )
+            $ Just reqInit
         consoleLog $ "Making request..."
         await =<< fetchFrom blog req
 

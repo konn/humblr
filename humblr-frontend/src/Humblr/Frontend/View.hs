@@ -444,7 +444,7 @@ articleView mode art@Article {..} =
                       [class_ "grid"]
                       [ div_
                           [class_ "cell"]
-                          [ figure_ [class_ "image"] [img_ [src_ $ resouceUrl Large img.url, alt_ img.name]]
+                          [ figure_ [class_ "image"] [img_ [styleInline_ "max-width: 768px", src_ $ resouceUrl Large img.url, alt_ img.name]]
                           ]
                       | img <- attachments
                       ]
