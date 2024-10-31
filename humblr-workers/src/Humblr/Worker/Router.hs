@@ -68,7 +68,7 @@ type HumblrEnv =
 assetCacheOptions :: CacheOptions
 assetCacheOptions =
   CacheOptions
-    { cacheTTL = 3600 * 24
+    { cacheTTL = 3600 * 8
     , onlyOk = True
     , includeQuery = False
     }
