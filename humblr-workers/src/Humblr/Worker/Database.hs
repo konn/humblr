@@ -108,7 +108,6 @@ updateArticle toArtId slug ArticleUpdate {..} = do
   tryInsertTagQ <- mkTryInsertTagQ
   lookupTagQ <- mkLookupTagNameQ
   tryNewImgQ <- mkTryNewImageQ
-  delArtImgQ <- deleteArticleImagesQ
   lookupImgQ <- mkLookupImageQ
   d1 <- getBinding "D1"
   imgQs <- mapM (bind tryNewImgQ) attachments
@@ -135,6 +134,7 @@ updateArticle toArtId slug ArticleUpdate {..} = do
             . (.results)
             . V.head
         )
+
   vs <- liftIO $ await' =<< D1.batch d1 (V.fromList qs)
   unless (V.all (.success) vs) $
     throwString $
@@ -147,10 +147,13 @@ updateArticle toArtId slug ArticleUpdate {..} = do
   tagArtQ <- mkTagArticleQ
   artImgQ <- mkArticleImageQ
   artId <- parseAid rest
+  delArtImgQ <- deleteArticleImagesQ
+  delTagQ <- flip bind artId =<< mkDeleteAllTagsOnArticle
+
   unless (null tagIds) $
     void $
       waitUntil . jsPromise
-        =<< liftIO . D1.batch d1
+        =<< liftIO . D1.batch d1 . V.cons delTagQ
         =<< mapM (bind tagArtQ artId) tagIds
   delImgs <- bind delArtImgQ artId
   unless (null imgIds) $
