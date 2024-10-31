@@ -117,5 +117,6 @@ all:
   # Place frontend in the router assets
   BUILD  --platform=linux/amd64 +frontend
   COPY +frontend/dist/* ./dist/router/assets/assets/
+  COPY +frontend/dist/assets.json ./dist/ssr/assets/
   SAVE ARTIFACT ./dist AS LOCAL _build
   SAVE IMAGE --push "${GLOBAL_CACHE_IMAGE}:cache"

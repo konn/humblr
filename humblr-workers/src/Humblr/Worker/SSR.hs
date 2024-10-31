@@ -28,7 +28,6 @@ import Data.Text qualified as T
 import Data.Time
 import GHC.Generics
 import GHC.Wasm.Object.Builtins
-import GHC.Wasm.Web.Generated.Response qualified as Raw
 import GHC.Wasm.Web.ReadableStream (fromReadableStream)
 import Humblr.CMark (getSummary)
 import Humblr.CMark qualified as CM
@@ -37,8 +36,9 @@ import Humblr.Frontend.View (viewModel)
 import Humblr.Worker.Database (DatabaseServiceClass)
 import Lucid
 import Network.Cloudflare.Worker.Binding (BindingsClass)
+import Network.Cloudflare.Worker.Binding.Assets (AssetsClass)
+import Network.Cloudflare.Worker.Binding.Assets qualified as Assets
 import Network.Cloudflare.Worker.Binding.Service
-import Network.Cloudflare.Worker.FetchAPI (fetch)
 import Network.Cloudflare.Worker.Response (WorkerResponse)
 import Network.Cloudflare.Worker.Response qualified as Resp
 import Streaming.ByteString qualified as Q
@@ -49,7 +49,7 @@ data SSRServiceFuns = SSRServiceFuns {renderArticle :: T.Text -> App WorkerRespo
 
 type App = ServiceM SSREnv '[]
 
-type SSREnv = BindingsClass '["ROOT_URI"] '[] '[ '("Database", DatabaseServiceClass)]
+type SSREnv = BindingsClass '["ROOT_URI"] '[] '[ '("Database", DatabaseServiceClass), '("ASSETS", AssetsClass)]
 
 type SSRFuns = Signature SSREnv SSRServiceFuns
 
@@ -67,6 +67,7 @@ newtype Assets = Assets {script :: T.Text}
 renderArticle :: T.Text -> App WorkerResponse
 renderArticle slug = do
   db <- getBinding "Database"
+  assets <- getBinding "ASSETS"
   root <- getEnv "ROOT_URI"
   liftIO do
     art <- await' =<< db.getArticle slug
@@ -74,9 +75,9 @@ renderArticle slug = do
       Q.toStrict_ $
         Q.mwrap $
           fmap (nullable mempty fromReadableStream) $
-            Raw.js_get_body
+            Resp.getBody
               =<< await
-              =<< fetch (inject @USVStringClass $ fromText $ root <> "/assets/assets.json") none
+              =<< Assets.fetch assets (inject @USVStringClass $ fromText $ root <> "/assets.json")
     let script = "/assets/" <> maybe "index.js" (.script) (A.decodeStrict @Assets resp)
         body = renderBS do
           doctype_
