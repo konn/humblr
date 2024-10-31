@@ -75,6 +75,7 @@ library
   -- cabal-gild: discover src --exclude=src/**/Internal.hs --exclude=src/**/Internal/**/*.hs
   exposed-modules:
     Humblr.Worker.Database
+    Humblr.Worker.Images
     Humblr.Worker.Router
     Humblr.Worker.SSR
     Humblr.Worker.Storage
@@ -85,6 +86,21 @@ library
 executable humblr-router
   import: defaults
   hs-source-dirs: app/router
+  main-is: Main.hs
+  ghc-options: -O2
+  -- cabal-gild: discover app/router --exclude=app/router/Main.hs
+  other-modules:
+
+  if os(wasi)
+    ghc-options:
+      -no-hs-main
+      -optl-mexec-model=reactor
+      "-optl-Wl,--export=handlers"
+  build-depends: humblr-workers
+
+executable humblr-images
+  import: defaults
+  hs-source-dirs: app/images
   main-is: Main.hs
   ghc-options: -O2
   -- cabal-gild: discover app/router --exclude=app/router/Main.hs

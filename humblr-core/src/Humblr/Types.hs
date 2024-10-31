@@ -30,6 +30,7 @@ module Humblr.Types (
   RootAPI (..),
   RestApi (..),
   AdminAPI (..),
+  ImagesRoutes (..),
   FrontendRoutes (..),
   RequireUser,
 ) where
@@ -66,7 +67,15 @@ data RootAPI mode = RootAPI
   { apiRoutes :: mode :- "api" :> NamedRoutes RestApi
   , assets :: mode :- "assets" :> Raw
   , resources :: mode :- "resources" :> Raw
+  , images :: mode :- "images" :> NamedRoutes ImagesRoutes
   , frontend :: mode :- NamedRoutes FrontendRoutes
+  }
+  deriving (Generic)
+
+data ImagesRoutes mode = ImagesRoutes
+  { thumb :: mode :- "thumb" :> Raw
+  , medium :: mode :- "medium" :> Raw
+  , large :: mode :- "large" :> Raw
   }
   deriving (Generic)
 

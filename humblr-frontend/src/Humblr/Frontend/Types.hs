@@ -37,6 +37,7 @@ module Humblr.Frontend.Types (
   BlobURLs (..),
   EditedAttachment (..),
   ImageUrl (..),
+  ImageSize (..),
   attachmentUrl,
   fromAttachment,
   fromEditedAttachment,
@@ -93,7 +94,7 @@ import GHC.Wasm.Web.ReadableStream (fromReadableStream)
 import Humblr.Types
 import Language.Javascript.JSaddle hiding (Nullable)
 import Miso
-import Miso.String (MisoString, toMisoString)
+import Miso.String (MisoString)
 import Servant.API
 import Servant.Auth.Client (Token (..))
 import Servant.Client.Core
@@ -215,7 +216,11 @@ data EditedAttachment = EditedAttachment
   deriving (Show, Eq, Generic)
 
 fromEditedAttachment :: EditedAttachment -> Attachment
-fromEditedAttachment EditedAttachment {..} = Attachment {url = attachmentUrl url, ..}
+fromEditedAttachment EditedAttachment {..} = Attachment {url = unUrl, ..}
+  where
+    unUrl = case url of
+      TempImg u -> u
+      FixedImg u -> u
 
 fromAttachment :: Attachment -> EditedAttachment
 fromAttachment Attachment {..} = EditedAttachment {url = FixedImg url, ..}
@@ -225,13 +230,21 @@ data ImageUrl
   | FixedImg !MisoString
   deriving (Show, Eq, Generic)
 
-attachmentUrl :: ImageUrl -> MisoString
-attachmentUrl = \case
-  TempImg url -> url
-  FixedImg url -> resouceUrl url
+data ImageSize = Thumb | Medium | Large
+  deriving (Show, Eq, Generic)
 
-resouceUrl :: T.Text -> T.Text
-resouceUrl name = "/" <> toUrlPiece rootApiLinks.resources <> "/" <> name
+attachmentUrl :: ImageSize -> ImageUrl -> MisoString
+attachmentUrl sz = \case
+  TempImg url -> url
+  FixedImg url -> resouceUrl sz url
+
+resouceUrl :: ImageSize -> T.Text -> T.Text
+resouceUrl sz name = "/" <> toUrlPiece loc <> "/" <> name
+  where
+    loc = case sz of
+      Large -> rootApiLinks.images.large
+      Medium -> rootApiLinks.images.medium
+      Thumb -> rootApiLinks.images.thumb
 
 data EditViewState = Edit | Preview
   deriving (Show, Eq, Generic)

@@ -33,6 +33,7 @@ import GHC.Wasm.Object.Builtins
 import GHC.Wasm.Web.ReadableStream (ReadableStream)
 import Humblr.Types
 import Humblr.Worker.Database (DatabaseServiceClass)
+import Humblr.Worker.Images (ImagesServiceClass)
 import Humblr.Worker.SSR (SSRServiceClass)
 import Humblr.Worker.Storage (StorageServiceClass)
 import Network.Cloudflare.Worker.Binding hiding (getBinding, getSecret)
@@ -63,6 +64,7 @@ type HumblrEnv =
      , '("Database", DatabaseServiceClass)
      , '("SSR", SSRServiceClass)
      , '("ASSETS", AssetsClass)
+     , '("IMAGES", ImagesServiceClass)
      ]
 
 assetCacheOptions :: CacheOptions
@@ -99,8 +101,32 @@ workers =
     { frontend = frontend
     , assets = serveCachedRaw assetCacheOptions $ serveAssets "ASSETS"
     , apiRoutes = apiRoutes
+    , images = imagesRoutes
     , resources = resources
     }
+
+imagesRoutes :: ImagesRoutes (AsWorker HumblrEnv)
+imagesRoutes =
+  ImagesRoutes
+    { thumb = serveCachedRaw assetCacheOptions thumbImage
+    , medium = serveCachedRaw assetCacheOptions mediumImage
+    , large = serveCachedRaw assetCacheOptions largeImage
+    }
+
+thumbImage :: Worker HumblrEnv Raw
+thumbImage = Tagged \req env _ -> do
+  let images = Raw.getBinding "IMAGES" env
+  await' =<< images.thumb ("/" <> T.intercalate "/" req.pathInfo)
+
+mediumImage :: Worker HumblrEnv Raw
+mediumImage = Tagged \req env _ -> do
+  let images = Raw.getBinding "IMAGES" env
+  await' =<< images.medium ("/" <> T.intercalate "/" req.pathInfo)
+
+largeImage :: Worker HumblrEnv Raw
+largeImage = Tagged \req env _ -> do
+  let images = Raw.getBinding "IMAGES" env
+  await' =<< images.large ("/" <> T.intercalate "/" req.pathInfo)
 
 resources :: Worker HumblrEnv Raw
 resources = Cache.serveCachedRaw assetCacheOptions $ Tagged \req env _ -> do

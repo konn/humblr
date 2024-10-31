@@ -10,6 +10,9 @@ sleep 1
 npx wrangler dev --port 9293 --local _build/ssr/src/worker.js &
 
 sleep 1
+npx wrangler dev --port 9294 --local _build/images/src/worker.js   &
+
+sleep 1
 npx wrangler dev --local _build/router/src/worker.js   &
 
 wait

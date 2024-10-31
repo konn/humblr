@@ -327,7 +327,7 @@ editMainView Edit art =
                               ]
                               [ figure_
                                   [class_ "image is-128by128"]
-                                  [ img_ [src_ $ attachmentUrl img.url]
+                                  [ img_ [src_ $ attachmentUrl Thumb img.url]
                                   , a_
                                       [ class_ "delete is-large"
                                       , onClick (RemoveBlobURL img.url)
@@ -444,7 +444,7 @@ articleView mode art@Article {..} =
                       [class_ "grid"]
                       [ div_
                           [class_ "cell"]
-                          [ figure_ [class_ "image"] [img_ [src_ $ resouceUrl img.url, alt_ img.name]]
+                          [ figure_ [class_ "image"] [img_ [src_ $ resouceUrl Large img.url, alt_ img.name]]
                           ]
                       | img <- attachments
                       ]
@@ -572,7 +572,7 @@ articleOverview arts art@Article {..} =
                                 [ figure_
                                     [class_ "image"]
                                     [ img_
-                                        [ src_ $ resouceUrl img.url
+                                        [ src_ $ resouceUrl Medium img.url
                                         , alt_ img.name
                                         ]
                                     ]
