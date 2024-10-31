@@ -475,7 +475,7 @@ data PageParams a = PageParams {total, page :: !Word32, payload :: !(V.Vector a)
 toPaged :: PageParams a -> Paged a
 toPaged PageParams {..} =
   let offset = 10 * page
-      hasNext = offset + page < total
+      hasNext = offset + fromIntegral (V.length payload) < total
    in Paged {total = fromIntegral total, page = fromIntegral page, offset = fromIntegral offset, ..}
 
 newtype TagName = TagName {name :: T.Text}

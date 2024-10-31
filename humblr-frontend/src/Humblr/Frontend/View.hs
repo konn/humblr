@@ -520,10 +520,10 @@ articlesList title as =
               class_ (MS.unwords $ "pagination-next" : ["is-disabled" | not hasNext])
                 : [onClick $ gotoPageAction as (page + 1) | hasNext]
             oneAttr
-              | page == 0 = [class_ "pagination-link is-active"]
+              | page == 0 = [class_ "pagination-link is-current"]
               | otherwise = [class_ "pagination-link", onClick $ gotoPageAction as 0]
             endAttr
-              | page == totalPage - 1 = [class_ "pagination-link is-active"]
+              | page == totalPage - 1 = [class_ "pagination-link is-current"]
               | otherwise = [class_ "pagination-link", onClick $ gotoPageAction as $ totalPage - 1]
             totalPage = ceiling (fromIntegral @_ @Double total / 10)
             ellipsis = li_ [class_ "pagination-ellipsis"] ["…"]
@@ -542,7 +542,7 @@ articlesList title as =
                           ,
                             [ li_
                                 []
-                                [a_ [class_ "pagination-link is-active"] [fromString $ show (page + 1)]]
+                                [a_ [class_ "pagination-link is-current"] [fromString $ show (page + 1)]]
                             ]
                           , [ellipsis | page < totalPage - 2]
                           , [li_ [] [a_ endAttr [fromString $ show totalPage]]]
