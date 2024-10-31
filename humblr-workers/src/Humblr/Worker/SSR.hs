@@ -96,7 +96,7 @@ renderArticle slug = do
 
             body_ $
               toHtml $
-                viewModel initialModel
+                viewModel Model {mode = ArticlePage art, modal = Nothing, errorMessage = Nothing}
     Resp.newResponse
       Resp.SimpleResponseInit
         { status = 200
