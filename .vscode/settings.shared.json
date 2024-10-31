@@ -23,5 +23,12 @@
     "**/.ruby-lsp": true,
     "**/.wrangler": true,
     "**/.tmp-earthly-out": true
+  },
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/.hg/store/**": true,
+    "**/.wrangler/**": true,
+    "_builder/**": true
   }
 }

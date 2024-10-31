@@ -84,6 +84,7 @@ frontend:
   RUN mv dist/index.js dist/${INDEX_JS_FINAL}
   COPY humblr-frontend/data/index.html dist/index.html
   RUN sed -i "s/index.js/${INDEX_JS_FINAL}/g" dist/index.html
+  RUN echo -n "${INDEX_JS_FINAL}" | jq -R -M -c '{script: .}' > dist/assets.json
   SAVE ARTIFACT ./dist
 
 build-worker:

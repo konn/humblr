@@ -63,6 +63,7 @@ library
     safe-exceptions,
     servant-auth-cloudflare-workers,
     servant-cloudflare-workers,
+    streaming-bytestring,
     text,
     time,
     transformers,

@@ -29,6 +29,7 @@
 module Humblr.Frontend.Types (
   Model (..),
   initialModel,
+  entrypointId,
   Mode (..),
   isAdminMode,
   Modal (..),
@@ -108,6 +109,9 @@ initialModel =
     , errorMessage = Nothing
     , modal = Nothing
     }
+
+entrypointId :: MisoString
+entrypointId = "app"
 
 data ErrorMessage = MkErrorMessage {title, message :: MisoString}
   deriving (Show, Eq, Generic)

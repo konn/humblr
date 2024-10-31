@@ -45,5 +45,5 @@ defaultApp = do
   where
     update = updateModel
     events = defaultEvents
-    mountPoint = Nothing
+    mountPoint = Just "app"
     logLevel = Off
