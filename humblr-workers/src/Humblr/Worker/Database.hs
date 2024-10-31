@@ -170,12 +170,14 @@ deleteArticle slug = do
   case martId of
     Nothing -> throwString "Article not found"
     Just aid -> do
-      delQ <- mkDeleteAllTagsOnArticle
-      delTags <- bind delQ aid
+      delTagQ <- mkDeleteAllTagsOnArticle
+      delImgQ <- mkDeleteAllImagesOnArticle
+      delTags <- bind delTagQ aid
+      delImgs <- bind delImgQ aid
       delArtQ <- mkDeleteArticle
       delArt <- bind delArtQ aid
       d1 <- getBinding "D1"
-      waitUntil . jsPromise =<< liftIO (D1.batch d1 (V.fromList [delTags, delArt]))
+      waitUntil . jsPromise =<< liftIO (D1.batch d1 (V.fromList [delTags, delImgs, delArt]))
 
 postArticle :: ArticleSeed -> App ()
 postArticle art = do
@@ -431,6 +433,14 @@ mkDeleteAllTagsOnArticle = do
   d1 <- getBinding "D1"
   liftIO $
     D1.prepare d1 "DELETE FROM articleTags WHERE article = ?" <&> \prep ->
+      Preparation \art ->
+        liftIO $ D1.bind prep (V.singleton $ D1.toD1ValueView art)
+
+mkDeleteAllImagesOnArticle :: App (Preparation '[ArticleId])
+mkDeleteAllImagesOnArticle = do
+  d1 <- getBinding "D1"
+  liftIO $
+    D1.prepare d1 "DELETE FROM articleImages WHERE article = ?" <&> \prep ->
       Preparation \art ->
         liftIO $ D1.bind prep (V.singleton $ D1.toD1ValueView art)
 
