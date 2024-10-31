@@ -262,13 +262,11 @@ updateModel (FileChanged (ElementId eid)) m =
   m <# do
     eith <- tryAny $ getElementById eid
     resl <- forM eith \file -> do
-      consoleLog "File changed!"
       files <- getProp "files" (Object file)
       numFiles <- fmap (fromMaybe 0) . fromJSVal =<< getProp "length" (Object files)
       if numFiles <= 0
         then pure NoOp
         else do
-          consoleLog $ "Number of files: " <> toMisoString (show numFiles)
           urls <- V.generateM numFiles \i -> do
             f <- files ^. jsf ("item" :: String) (val i)
             mctype <- fmap (parseImageCType =<<) . fromJSVal =<< (getProp "type" $ Object f)
@@ -279,7 +277,6 @@ updateModel (FileChanged (ElementId eid)) m =
             forM ((,,) <$> mctype <*> murl <*> mname) \(ctype, url, name) ->
               pure EditedAttachment {..}
 
-          consoleLog $ "URLs: " <> toMisoString (show urls)
           empStr <- val ("" :: T.Text)
           setProp "value" empStr (Object file)
           pure $ AddBlobURLs $ BlobURLs $ OM.fromList $ map ((.name) &&& id) $ catMaybes $ V.toList urls
@@ -308,11 +305,9 @@ withArticleSlug slug k = do
   eith <- tryAny $ callApi (api.getArticle slug)
   case eith of
     Left (fromException -> Just (FailureResponse _req resp))
-      | resp.responseStatusCode == status404 -> do
-          consoleLog $ "404!"
+      | resp.responseStatusCode == status404 ->
           pure $ ShowErrorPage "Not Found" $ "The article " <> toMisoString slug <> " was not found."
       | otherwise -> do
-          consoleLog $ "ISE (non-404)"
           pure $
             ShowErrorPage "Internal Server Error" $
               "Failed to retrieve the article "
@@ -320,7 +315,6 @@ withArticleSlug slug k = do
                 <> ": "
                 <> toMisoString (show resp.responseStatusCode)
     Left err -> do
-      consoleLog $ "Non-client error"
       pure $
         ShowErrorPage "Internal Server Error" $
           toMisoString $

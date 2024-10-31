@@ -176,16 +176,12 @@ toAttachments slug blobURLs =
   forM (F.toList blobURLs.urls) \EditedAttachment {url = origUrl, ..} -> do
     url <- case origUrl of
       TempImg url -> do
-        consoleLog $ "Saving image: " <> toMisoString (show (origUrl, name, ctype))
         blob <- liftIO $ await =<< js_fetch (fromText url)
-        consoleLog "Fetched blob"
         src <-
           liftIO $
             nullable (pure mempty) (Q.toStrict_ . fromReadableStream)
               =<< Resp.js_get_body blob
-        consoleLog "Saving blob..."
         newUri <- callApi $ adminAPI.postImage slug name ctype src
-        consoleLog $ "Saved image as: " <> toMisoString (show newUri)
         pure newUri
       FixedImg url -> pure url
     pure Attachment {..}
