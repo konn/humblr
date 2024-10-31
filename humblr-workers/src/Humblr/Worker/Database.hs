@@ -55,7 +55,14 @@ data DatabaseServiceFuns = DatabaseServiceFuns
   deriving (Generic)
   deriving anyclass (ToService DbEnv)
 
-type DbFuns = Signature DbEnv DatabaseServiceFuns
+type DbFuns =
+  '[ '("putArticle", T.Text ~> ArticleUpdate ~> Return ())
+   , '("deleteArticle", T.Text ~> Return ())
+   , '("postArticle", ArticleSeed ~> Return ())
+   , '("getArticle", T.Text ~> Return Article)
+   , '("listTagArticles", T.Text ~> Maybe Word ~> Return [Article])
+   , '("listArticles", Maybe Word ~> Return [Article])
+   ]
 
 type DatabaseService = Service DbFuns
 

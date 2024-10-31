@@ -33,6 +33,7 @@ import GHC.Wasm.Object.Builtins
 import GHC.Wasm.Web.ReadableStream (ReadableStream)
 import Humblr.Types
 import Humblr.Worker.Database (DatabaseServiceClass)
+import Humblr.Worker.SSR (SSRServiceClass)
 import Humblr.Worker.Storage (StorageServiceClass)
 import Network.Cloudflare.Worker.Binding hiding (getBinding, getSecret)
 import Network.Cloudflare.Worker.Binding qualified as Raw
@@ -60,6 +61,7 @@ type HumblrEnv =
     '["CF_AUD_TAG"]
     '[ '("Storage", StorageServiceClass)
      , '("Database", DatabaseServiceClass)
+     , '("SSR", SSRServiceClass)
      , '("ASSETS", AssetsClass)
      ]
 
@@ -114,9 +116,14 @@ frontend =
     , tagArticles = const $ const serveIndex
     , newArticle = serveIndex
     , editArticle = const serveIndex
-    , articlePage = const serveIndex
+    , articlePage = articlePage
     , adminHome = const serveIndex
     }
+
+articlePage :: T.Text -> Worker HumblrEnv Raw
+articlePage slug = Cache.serveCachedRaw assetCacheOptions $ Tagged \_ env _ -> do
+  let renderer = Raw.getBinding "SSR" env
+  await . jsPromise =<< renderer.renderArticle slug
 
 serveIndex :: Worker HumblrEnv Raw
 serveIndex = Tagged \req env _ ->

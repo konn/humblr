@@ -105,6 +105,10 @@ all:
   BUILD --platform=linux/amd64 +build-worker --target=humblr-storage --wasm=worker.wasm
   COPY (+build-worker/dist --target=humblr-storage) ./dist/storage
 
+  # Build SSR worker
+  BUILD --platform=linux/amd64 +build-worker --target=humblr-storage --wasm=worker.wasm
+  COPY (+build-worker/dist --target=humblr-ssr) ./dist/ssr
+
   # Build Router worker
   BUILD --platform=linux/amd64 +build-worker --target=humblr-router --wasm=worker.wasm
   COPY (+build-worker/dist --target=humblr-router) ./dist/router

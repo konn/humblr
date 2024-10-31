@@ -53,9 +53,12 @@ library
     bytestring,
     case-insensitive,
     cloudflare-worker,
+    containers,
     ghc-wasm-compat,
     ghc-wasm-jsobjects,
     humblr-core,
+    humblr-frontend,
+    lucid,
     network-uri,
     safe-exceptions,
     servant-auth-cloudflare-workers,
@@ -72,6 +75,7 @@ library
   exposed-modules:
     Humblr.Worker.Database
     Humblr.Worker.Router
+    Humblr.Worker.SSR
     Humblr.Worker.Storage
 
   -- cabal-gild: discover src --include=src/**/Internal.hs --include=src/**/Internal/**/*.hs
@@ -110,6 +114,21 @@ executable humblr-database
 executable humblr-storage
   import: defaults
   hs-source-dirs: app/storage
+  main-is: Main.hs
+  ghc-options: -O2
+  -- cabal-gild: discover app/storage --exclude=app/storage/Main.hs
+  other-modules:
+
+  if os(wasi)
+    ghc-options:
+      -no-hs-main
+      -optl-mexec-model=reactor
+      "-optl-Wl,--export=handlers"
+  build-depends: humblr-workers
+
+executable humblr-ssr
+  import: defaults
+  hs-source-dirs: app/ssr
   main-is: Main.hs
   ghc-options: -O2
   -- cabal-gild: discover app/storage --exclude=app/storage/Main.hs
