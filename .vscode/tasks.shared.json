@@ -10,7 +10,7 @@
     },
     {
       "type": "shell",
-      "command": "npx wrangler deploy --minify _build/database/src/worker.js && npx wrangler deploy --minify _build/storage/src/worker.js && npx wrangler deploy --minify _build/router/src/worker.js && npx wrangler deploy --minify _build/ssr/src/worker.js && pushd _build/database && yes y | npx wrangler  d1 migrations apply gohumblr --remote",
+      "command": "npx wrangler deploy --minify _build/database/src/worker.js && npx wrangler deploy --minify _build/storage/src/worker.js && npx wrangler deploy --minify _build/ssr/src/worker.js  && npx wrangler deploy --minify _build/router/src/worker.js&& pushd _build/database && yes y | npx wrangler  d1 migrations apply gohumblr --remote",
       "label": "wrangler: deploy",
       "detail": "$ wrangler deploy"
     }
