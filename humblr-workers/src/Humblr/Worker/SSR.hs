@@ -92,16 +92,11 @@ renderArticle slug = do
                 " - ごはんぶらー"
               link_ [rel_ "stylesheet", type_ "text/css", href_ "https://cdn.jsdelivr.net/npm/bulma@1.0.0/css/bulma.min.css"]
               link_ [rel_ "stylesheet", type_ "text/css", href_ "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"]
-              script_ mempty `with` [src_ script, type_ "module", async_ ""]
+              script_ mempty `with` [src_ script, type_ "module", async_ "", defer_ ""]
 
             body_ $
               toHtml $
-                viewModel
-                  Model
-                    { mode = ArticlePage art
-                    , modal = Nothing
-                    , errorMessage = Nothing
-                    }
+                viewModel initialModel
     Resp.newResponse
       Resp.SimpleResponseInit
         { status = 200

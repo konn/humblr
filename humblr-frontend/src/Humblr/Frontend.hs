@@ -32,18 +32,16 @@ defaultMain :: IO ()
 defaultMain = Runner.run defaultApp
 
 defaultApp :: JSM ()
-defaultApp = do
-  url <- getCurrentURI
-  let model = initialModel
-  startApp
-    App
-      { subs = [uriSub HandleUrl]
-      , view = viewModel
-      , initialAction = HandleUrl url
-      , ..
-      }
+defaultApp = miso \url ->
+  App
+    { subs = [uriSub HandleUrl]
+    , view = viewModel
+    , initialAction = HandleUrl url
+    , ..
+    }
   where
+    model = initialModel
     update = updateModel
     events = defaultEvents
-    mountPoint = Just "app"
+    mountPoint = Nothing
     logLevel = Off

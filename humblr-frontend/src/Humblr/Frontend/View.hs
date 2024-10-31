@@ -45,7 +45,7 @@ import Servant.Auth.Client ()
 
 viewModel :: Model -> View Action
 viewModel m@Model {..} =
-  div_ [id_ entrypointId] $
+  div_ [] $
     headerView m
       : section_ [class_ "section"] (mainView m)
       : [ div_
