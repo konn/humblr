@@ -18,6 +18,7 @@ module Humblr.Types (
   Image,
   ImageType (..),
   Attachment (..),
+  Paged (..),
   imageCType,
   parseImageCType,
   toExtension,
@@ -41,6 +42,7 @@ import Data.Map.Strict qualified as Map
 import Data.Proxy (Proxy (..))
 import Data.Text qualified as T
 import Data.Time (UTCTime)
+import Data.Vector qualified as V
 import GHC.Generics (Generic)
 import Language.WASM.JSVal.Convert
 import Network.Cloudflare.Worker.Binding.D1 (FromD1Value (..), ToD1Value (..))
@@ -68,6 +70,35 @@ data RootAPI mode = RootAPI
   }
   deriving (Generic)
 
+data RestApi mode = RestApi
+  { listArticles ::
+      mode :- "articles" :> QueryParam "page" Word :> Get '[JSON] (Paged Article)
+  , getArticle ::
+      mode :- "articles" :> Capture "slug" T.Text :> Get '[JSON] Article
+  , listTagArticles :: mode :- "tags" :> Capture "tag" T.Text :> QueryParam "page" Word :> Get '[JSON] (Paged Article)
+  , adminAPI :: mode :- "admin" :> RequireUser :> NamedRoutes AdminAPI
+  }
+  deriving (Generic)
+
+data AdminAPI mode = AdminAPI
+  { postArticle ::
+      mode :- "articles" :> ReqBody '[JSON] ArticleSeed :> Post '[JSON] NoContent
+  , putArticle ::
+      mode :- "articles" :> Capture "slug" T.Text :> ReqBody '[JSON] ArticleUpdate :> Put '[JSON] NoContent
+  , deleteArticle ::
+      mode :- "articles" :> Capture "slug" T.Text :> Delete '[JSON] NoContent
+  , putImage :: mode :- PutResource 'PUT
+  , postImage :: mode :- PutResource 'POST
+  }
+  deriving (Generic)
+
+type PutResource meth =
+  "resources"
+    :> Capture "slug" T.Text
+    :> Capture "name" T.Text
+    :> Image
+    :> Verb meth 200 '[PlainText] T.Text
+
 data User = User {email :: T.Text}
   deriving (Show, Eq, Ord, Generic)
   deriving anyclass (FromJSON, ToJSON)
@@ -91,16 +122,6 @@ instance FromJWT User where
 eitherResult :: J.Result a -> Either T.Text a
 eitherResult (J.Success a) = Right a
 eitherResult (J.Error e) = Left $ T.pack e
-
-data RestApi mode = RestApi
-  { listArticles ::
-      mode :- "articles" :> QueryParam "page" Word :> Get '[JSON] [Article]
-  , getArticle ::
-      mode :- "articles" :> Capture "slug" T.Text :> Get '[JSON] Article
-  , listTagArticles :: mode :- "tags" :> Capture "tag" T.Text :> QueryParam "page" Word :> Get '[JSON] [Article]
-  , adminAPI :: mode :- "admin" :> RequireUser :> NamedRoutes AdminAPI
-  }
-  deriving (Generic)
 
 instance (HasLink api) => HasLink (Image :> api) where
   type MkLink (Image :> api) x = MkLink api x
@@ -137,25 +158,6 @@ parseImageCType :: T.Text -> Maybe ImageType
 parseImageCType "image/png" = Just Png
 parseImageCType "image/jpeg" = Just Jpeg
 parseImageCType _ = Nothing
-
-data AdminAPI mode = AdminAPI
-  { postArticle ::
-      mode :- "articles" :> ReqBody '[JSON] ArticleSeed :> Post '[JSON] NoContent
-  , putArticle ::
-      mode :- "articles" :> Capture "slug" T.Text :> ReqBody '[JSON] ArticleUpdate :> Put '[JSON] NoContent
-  , deleteArticle ::
-      mode :- "articles" :> Capture "slug" T.Text :> Delete '[JSON] NoContent
-  , putImage :: mode :- PutResource 'PUT
-  , postImage :: mode :- PutResource 'POST
-  }
-  deriving (Generic)
-
-type PutResource meth =
-  "resources"
-    :> Capture "slug" T.Text
-    :> Capture "name" T.Text
-    :> Image
-    :> Verb meth 200 '[PlainText] T.Text
 
 data ArticleUpdate = ArticleUpdate {body :: T.Text, tags :: [T.Text], attachments :: [Attachment]}
   deriving stock (Generic, Show, Eq)
@@ -201,3 +203,14 @@ data Article = Article
   deriving stock (Eq, Generic, Show)
   deriving anyclass (FromJSON, ToJSON)
   deriving (IsServiceArg) via ViaJSON Article
+
+data Paged a = Paged
+  { payload :: !(V.Vector a)
+  , page :: !Word
+  , offset :: !Word
+  , total :: !Word
+  , hasNext :: !Bool
+  }
+  deriving stock (Eq, Generic, Show, Foldable, Traversable, Functor)
+  deriving anyclass (FromJSON, ToJSON)
+  deriving (IsServiceArg) via ViaJSON (Paged a)

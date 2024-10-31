@@ -205,11 +205,7 @@ updateModel (OpenTagArticles tag mcur) m =
               , message = "Tag retrieve failed: " <> toMisoString (displayException err)
               }
             Nothing
-      Right articles ->
-        pure $
-          ShowTagArticles
-            tag
-            PagedArticles {page = fromMaybe 0 mcur, ..}
+      Right articles -> pure $ ShowTagArticles tag articles
 updateModel (ShowTagArticles tag articles) m =
   noEff m {mode = TagArticles MkTagArticles {..}}
 updateModel (ShowErrorNotification msg mstate) m =
@@ -293,7 +289,7 @@ updateModel (AddBlobURLs urls) m =
 updateModel (RemoveBlobURL url) m =
   noEff $ m & #mode . blobURLsT . #urls %~ OM.filter (const $ (/= url) . (.url))
 
-withArticles :: Maybe Word -> (PagedArticles -> JSM Action) -> JSM Action
+withArticles :: Maybe Word -> (Paged Article -> JSM Action) -> JSM Action
 withArticles mcur k = do
   eith <- tryAny $ callApi (api.listArticles mcur)
   case eith of
@@ -305,8 +301,7 @@ withArticles mcur k = do
             , message = toMisoString $ displayException err
             }
           Nothing
-    Right articles ->
-      k PagedArticles {page = fromMaybe 0 mcur, ..}
+    Right articles -> k articles
 
 withArticleSlug :: T.Text -> (Article -> JSM Action) -> JSM Action
 withArticleSlug slug k = do
@@ -467,8 +462,9 @@ newTagT =
     (#_CreatingArticle . newTagL)
 
 class HasArticles a where
-  articlesL :: Lens' a PagedArticles
+  articlesL :: Lens' a (Paged Article)
   articleAction# :: Proxy# a -> T.Text -> Action
+  gotoPageAction :: a -> Word -> Action
 
 articleAction :: forall a -> (HasArticles a) => T.Text -> Action
 {-# INLINE articleAction #-}
@@ -477,16 +473,19 @@ articleAction a = articleAction# @a proxy#
 instance HasArticles TagArticles where
   articlesL = #articles
   articleAction# _ = openArticle
+  gotoPageAction a = openTagArticles a.tag . Just
 
 instance HasArticles TopPage where
   articlesL = #articles
   articleAction# _ = openArticle
+  gotoPageAction _ = openTopPage . Just
 
 instance HasArticles AdminPage where
   articlesL = #articles
   articleAction# _ = openEditArticle
+  gotoPageAction _ = openAdminPage . Just
 
-articlesT :: Traversal' Mode PagedArticles
+articlesT :: Traversal' Mode (Paged Article)
 articlesT =
   failing
     ( failing

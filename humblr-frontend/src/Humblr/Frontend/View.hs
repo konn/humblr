@@ -496,14 +496,14 @@ topPageView top = articlesList (\curs -> "Recent Articles " : curs) top
 
 articlesList :: forall arts. (HasArticles arts) => ([View Action] -> [View Action]) -> arts -> [View Action]
 articlesList title as =
-  let PagedArticles {..} = as ^. articlesL
+  let Paged {..} = as ^. articlesL
    in [ h2_
           [class_ "title"]
           $ title
             [ " ("
-            , fromString $ show $ page * 10 + 1
+            , fromString $ show offset
             , "-"
-            , fromString $ show $ page * 10 + fromIntegral (length articles)
+            , fromString $ show $ offset + fromIntegral (length payload)
             , ")"
             ]
       , p_
@@ -511,8 +511,45 @@ articlesList title as =
           [ div_
               [class_ "grid is-col-min-10"]
               $ map (div_ [class_ "cell"] . pure . articleOverview arts)
-              $ toList articles
+              $ toList payload
           ]
+      , let backAttr =
+              class_ (MS.unwords $ "pagination-previous" : ["is-disabled" | page <= 0])
+                : [onClick $ gotoPageAction as (page - 1) | page > 0]
+            nextAttr =
+              class_ (MS.unwords $ "pagination-next" : ["is-disabled" | not hasNext])
+                : [onClick $ gotoPageAction as (page + 1) | hasNext]
+            oneAttr
+              | page == 0 = [class_ "pagination-link is-active"]
+              | otherwise = [class_ "pagination-link", onClick $ gotoPageAction as 0]
+            endAttr
+              | page == totalPage - 1 = [class_ "pagination-link is-active"]
+              | otherwise = [class_ "pagination-link", onClick $ gotoPageAction as $ totalPage - 1]
+            totalPage = ceiling (fromIntegral @_ @Double total / 10)
+            ellipsis = li_ [class_ "pagination-ellipsis"] ["…"]
+         in nav_
+              [class_ "pagination is-centered", P "role" "navigation", P "aria-label" "pagenation"]
+              [ a_ backAttr [icon "arrow_back_ios"]
+              , a_ nextAttr [icon "arrow_forward_ios"]
+              , ul_
+                  [class_ "pagination-list"]
+                  $ li_ [] [a_ oneAttr ["1"]]
+                    : mconcat
+                      [ mconcat
+                          [ [ ellipsis
+                            | page > 1
+                            ]
+                          ,
+                            [ li_
+                                []
+                                [a_ [class_ "pagination-link is-active"] [fromString $ show (page + 1)]]
+                            ]
+                          , [ellipsis | page < totalPage - 2]
+                          , [li_ [] [a_ endAttr [fromString $ show totalPage]]]
+                          ]
+                      | totalPage > 1
+                      ]
+              ]
       ]
 
 articleOverview :: forall arts -> (HasArticles arts) => Article -> View Action

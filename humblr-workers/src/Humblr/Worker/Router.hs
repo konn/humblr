@@ -220,12 +220,12 @@ getArticle slug = do
   p <- liftIO $ db.getArticle slug
   liftIO $ await' p
 
-listTagArticles :: T.Text -> Maybe Word -> App [Article]
+listTagArticles :: T.Text -> Maybe Word -> App (Paged Article)
 listTagArticles tag mpage = do
   db <- getBinding "Database"
   liftIO $ await' =<< db.listTagArticles tag mpage
 
-listArticles :: Maybe Word -> App [Article]
+listArticles :: Maybe Word -> App (Paged Article)
 listArticles mpage = do
   db <- getBinding "Database"
   liftIO $ await' =<< db.listArticles mpage

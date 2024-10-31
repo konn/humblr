@@ -50,7 +50,6 @@ module Humblr.Frontend.Types (
   EditedArticle (..),
   NewArticle (..),
   TagArticles (..),
-  PagedArticles (..),
   toArticleEdition,
   toArticleUpdate,
   toArticleSeed,
@@ -146,13 +145,7 @@ isAdminMode Idle = False
 
 data TagArticles = MkTagArticles
   { tag :: !T.Text
-  , articles :: {-# UNPACK #-} !PagedArticles
-  }
-  deriving (Show, Generic, Eq)
-
-data PagedArticles = PagedArticles
-  { page :: !Word
-  , articles :: ![Article]
+  , articles :: {-# UNPACK #-} !(Paged Article)
   }
   deriving (Show, Generic, Eq)
 
@@ -247,10 +240,10 @@ resouceUrl name = "/" <> toUrlPiece rootApiLinks.resources <> "/" <> name
 data EditViewState = Edit | Preview
   deriving (Show, Eq, Generic)
 
-newtype TopPage = MkTopPage {articles :: PagedArticles}
+newtype TopPage = MkTopPage {articles :: Paged Article}
   deriving (Show, Generic, Eq)
 
-newtype AdminPage = MkAdminPage {articles :: PagedArticles}
+newtype AdminPage = MkAdminPage {articles :: Paged Article}
   deriving (Show, Generic, Eq)
 
 data ErrorPage = MkErrorPage
@@ -300,7 +293,7 @@ data Action
   | SetNewTagName !MisoString
   | SaveEditingArticle
   | OpenTagArticles !T.Text !(Maybe Word)
-  | ShowTagArticles !T.Text !PagedArticles
+  | ShowTagArticles !T.Text !(Paged Article)
   | SetEditedSlug !MisoString
   | ShowErrorNotification !ErrorMessage !(Maybe Mode)
   | DismissError

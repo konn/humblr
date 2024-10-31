@@ -54,6 +54,7 @@ library
     servant-auth-lite,
     text,
     time,
+    vector,
     web-sys-hs,
 
   hs-source-dirs: src

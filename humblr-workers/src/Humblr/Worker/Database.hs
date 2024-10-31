@@ -49,8 +49,8 @@ data DatabaseServiceFuns = DatabaseServiceFuns
   , deleteArticle :: T.Text -> App ()
   , postArticle :: ArticleSeed -> App ()
   , getArticle :: T.Text -> App Article
-  , listTagArticles :: T.Text -> Maybe Word -> App [Article]
-  , listArticles :: Maybe Word -> App [Article]
+  , listTagArticles :: T.Text -> Maybe Word -> App (Paged Article)
+  , listArticles :: Maybe Word -> App (Paged Article)
   }
   deriving (Generic)
   deriving anyclass (ToService DbEnv)
@@ -60,8 +60,8 @@ type DbFuns =
    , '("deleteArticle", T.Text ~> Return ())
    , '("postArticle", ArticleSeed ~> Return ())
    , '("getArticle", T.Text ~> Return Article)
-   , '("listTagArticles", T.Text ~> Maybe Word ~> Return [Article])
-   , '("listArticles", Maybe Word ~> Return [Article])
+   , '("listTagArticles", T.Text ~> Maybe Word ~> Return (Paged Article))
+   , '("listArticles", Maybe Word ~> Return (Paged Article))
    ]
 
 type DatabaseService = Service DbFuns
@@ -191,11 +191,11 @@ getArticle slug = do
     pure
     =<< lookupSlug slug
 
-listTagArticles :: T.Text -> Maybe Word -> App [Article]
+listTagArticles :: T.Text -> Maybe Word -> App (Paged Article)
 listTagArticles tag mpage =
   getArticlesWithTag tag $ fromIntegral <$> mpage
 
-listArticles :: Maybe Word -> App [Article]
+listArticles :: Maybe Word -> App (Paged Article)
 listArticles mpage = getRecentArticles (fromIntegral <$> mpage)
 
 newtype TagId = TagId {tagId :: Word32}
@@ -254,19 +254,26 @@ bind = coerce
 
 getRecentArticles ::
   Maybe Word32 ->
-  App [Article]
-getRecentArticles page = do
+  App (Paged Article)
+getRecentArticles mpage = do
+  let page = fromMaybe 0 mpage
+  countD <-
+    liftIO
+      . (await' <=< D1.first <=< flip D1.bind mempty)
+      =<< prepare "SELECT COUNT(id) AS count FROM articles"
+  let total =
+        either (const 0) (.count) $
+          D1.parseD1RowView @Count =<< maybe (Left "Not found") Right countD
   recents <- mkRecentArticlesQ
-  rows <-
-    liftIO . (await' <=< D1.all)
-      =<< bind recents (maybe 0 (* 10) page)
+  rows <- liftIO . (await' <=< D1.all) =<< bind recents page
   unless rows.success $
     throwString "Failed to fetch recent articles"
-  let (fails, articles) = partitionEithers $ map D1.parseD1RowView $ V.toList rows.results
+  let (fails, articles) = V.partitionWith id $ V.map D1.parseD1RowView rows.results
   unless (null fails) $
     throwString $
       "Failed to parse article row: " <> show fails
-  mapM fromArticleRow articles
+  payload <- mapM fromArticleRow articles
+  pure $ toPaged PageParams {..}
 
 mkRecentArticlesQ :: App (Preparation '[Word32])
 mkRecentArticlesQ = do
@@ -435,20 +442,41 @@ mkDeleteArticle = do
       Preparation \aid ->
         liftIO $ D1.bind prep (V.singleton $ D1.toD1ValueView aid)
 
-getArticlesWithTag :: T.Text -> Maybe Word32 -> App [Article]
+newtype Count = Count {count :: Word32}
+  deriving (Show, Eq, Ord, Generic)
+  deriving anyclass (FromD1Row)
+
+getArticlesWithTag :: T.Text -> Maybe Word32 -> App (Paged Article)
 getArticlesWithTag tag mpage = do
+  let page = fromMaybe 0 mpage
+  countD <-
+    liftIO
+      . (await' <=< D1.first <=< flip D1.bind (V.singleton $ D1.toD1ValueView tag))
+      =<< prepare "SELECT COUNT(assoc.article) AS count FROM articleTags as assoc INNER JOIN tags AS tag ON tag.id = assoc.tag WHERE tag.name = ?1"
+  let total =
+        either (const 0) (.count) $
+          D1.parseD1RowView @Count =<< maybe (Left "Not found") Right countD
   artsWithTagQ <- mkArticleWithTagsQ
   rows <-
     liftIO . (await' <=< D1.all)
-      =<< bind artsWithTagQ tag (fromMaybe 0 mpage)
+      =<< bind artsWithTagQ tag page
   unless rows.success $
     throwString "Failed to fetch articles with tag"
 
-  let (fails, articles) = partitionEithers $ map D1.parseD1RowView $ V.toList rows.results
+  let (fails, articles) = V.partitionWith id $ V.map D1.parseD1RowView rows.results
   unless (null fails) $
     throwString $
       "Failed to parse article row: " <> show fails
-  mapM fromArticleRow articles
+  payload <- mapM fromArticleRow articles
+  pure $ toPaged PageParams {..}
+
+data PageParams a = PageParams {total, page :: !Word32, payload :: !(V.Vector a)}
+
+toPaged :: PageParams a -> Paged a
+toPaged PageParams {..} =
+  let offset = 10 * page
+      hasNext = offset + page < total
+   in Paged {total = fromIntegral total, page = fromIntegral page, offset = fromIntegral offset, ..}
 
 newtype TagName = TagName {name :: T.Text}
   deriving (Show, Eq, Ord, Generic)
