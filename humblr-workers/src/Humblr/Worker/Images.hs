@@ -24,13 +24,12 @@ module Humblr.Worker.Images (ImagesServiceClass, JSObject (..), handlers, Images
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Maybe
 import Data.Aeson qualified as A
-import Data.ByteString.Lazy qualified as LBS
 import Data.Char qualified as C
+import Data.Functor ((<&>))
+import Data.Maybe (catMaybes, isNothing)
+import Data.String (IsString (..))
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
-import GHC.Base (proxy#)
 import GHC.Generics
-import GHC.TypeLits (KnownSymbol, symbolVal')
 import GHC.Wasm.Object.Builtins
 import GHC.Wasm.Web.Generated.Response qualified as RawResp
 import Humblr.Worker.Storage (SignParams (..), StorageServiceClass)
@@ -41,7 +40,6 @@ import Network.Cloudflare.Worker.Response (WorkerResponse, newResponse')
 import Servant.Cloudflare.Workers (err404)
 import Servant.Cloudflare.Workers.Internal.Response (toWorkerResponse)
 import Servant.Cloudflare.Workers.Internal.ServerError (responseServerError)
-import Servant.Cloudflare.Workers.Prelude (toUrlPiece)
 import Wasm.Prelude.Linear qualified as PL
 
 data ImagesServiceFuns = ImagesServiceFuns
@@ -86,41 +84,20 @@ instance A.ToJSON ImageMetadata where
         , A.allNullaryToStringTag = True
         }
 
-class Commasep a where
-  commaSep :: a -> T.Text
-  default commaSep ::
-    (Generic a, GCommasep (Rep a)) =>
-    a ->
-    T.Text
-  commaSep = gcommaSep . from
-
-class GCommasep f where
-  gcommaList :: f () -> [T.Text]
-
-gcommaSep :: (GCommasep f) => f () -> T.Text
-gcommaSep = T.intercalate "," . gcommaList
-
-instance GCommasep U1 where
-  gcommaList = mempty
-
-instance (GCommasep f, GCommasep g) => GCommasep (f :*: g) where
-  gcommaList (l :*: r) = gcommaList l <> gcommaList r
-
-instance (GCommasep f) => GCommasep (D1 i f) where
-  gcommaList = gcommaList . unM1
-
-instance (GCommasep f) => GCommasep (C1 i f) where
-  gcommaList = gcommaList . unM1
-
-instance
-  (A.ToJSON a, KnownSymbol l) =>
-  GCommasep (S1 ('MetaSel ('Just l) z b c) (K1 i a))
-  where
-  gcommaList (M1 (K1 a)) = [toUrlPiece (symbolVal' @l proxy#) <> "=" <> toUrlPiece (TE.decodeUtf8 $ LBS.toStrict $ A.encode a)]
-
 data ImageOption = ImageOption {height, width :: !(Maybe Word), metadata :: !(Maybe ImageMetadata), fit :: !(Maybe Fit)}
   deriving (Show, Eq, Ord, Generic)
-  deriving anyclass (Commasep)
+
+commaSep :: ImageOption -> T.Text
+commaSep ImageOption {..} =
+  T.intercalate "," $
+    catMaybes
+      [ ("height=" <>) . T.pack . show <$> height
+      , ("width=" <>) . T.pack . show <$> width
+      , metadata <&> \mt ->
+          "metadata=" <> T.toLower (T.pack $ show mt)
+      , fit <&> \f ->
+          "fit=" <> T.pack (A.camelTo2 '-' $ show f)
+      ]
 
 instance A.ToJSON ImageOption where
   toJSON = A.genericToJSON A.defaultOptions {A.omitNothingFields = True}
@@ -164,6 +141,7 @@ withImageOptions opts path
       root <- getEnv "ROOT_URI"
       liftIO $ runMaybeT do
         url <- MaybeT $ await' =<< storage.issueSignedURL SignParams {duration = 60, name = path}
+        liftIO $ consoleLog $ fromString $ "Signed URL: " <> show url
         liftIO do
           let cdn =
                 T.intercalate
@@ -173,8 +151,10 @@ withImageOptions opts path
                   , commaSep opts
                   , url
                   ]
+          consoleLog $ fromString $ "CDN URL: " <> show cdn
           resp <- await =<< fetch (inject $ fromText @USVStringClass cdn) none
           body <- RawResp.js_get_body resp
+          consoleLog $ fromString $ "Body is none?: " <> show (isNothing $ fromNullable body)
           stat <- RawResp.js_get_status resp
           statTxt <- RawResp.js_get_statusText resp
           headers <- RawResp.js_get_headers resp

@@ -140,20 +140,22 @@ issueSignedURL SignParams {..} = do
     void $ MaybeT $ await' =<< R2.head r2 (TE.encodeUtf8 name)
     liftIO do
       now <- getPOSIXTime
-      let expiry = now + fromIntegral duration
+      let expiry = fromIntegral $ ceiling @_ @Int $ now + fromIntegral duration
       let payload = A.encode $ SignPayload {..}
       sgn <- useByteStringAsJSByteArray @Word8 (LBS.toStrict payload) \bs ->
-        fmap (toByteString @Word8 . unsafeCast) . await
+        fmap (toByteString @Word8) . fromArrayBuffer . unsafeCast
+          =<< await
           =<< js_fun_sign_AlgorithmIdentifier_CryptoKey_BufferSource_Promise_any
             subtleCrypto
             (toAlogirhtmIdentifier HS256)
             key
             (inject bs)
       let sgnBS = B64U.encodeUnpadded sgn
-      pure $
-        T.dropWhileEnd (== '/') root
-          <> "/"
-          <> toUrlPiece (rootApiLinks.resources (T.splitOn "/" name) expiry $ TE.decodeUtf8 sgnBS)
+          signedUrl =
+            T.dropWhileEnd (== '/') root
+              <> "/"
+              <> toUrlPiece (rootApiLinks.resources (T.splitOn "/" name) expiry $ TE.decodeUtf8 sgnBS)
+      pure signedUrl
 
 getSignKey :: App CryptoKey
 getSignKey = do
@@ -186,15 +188,16 @@ get GetParams {..} = do
   key <- getSignKey
   liftIO $ runMaybeT do
     now <- liftIO getPOSIXTime
-    let goodSign =
+    let payload = A.encode SignPayload {..}
+        goodSign =
           verifySignature
             key
-            (TE.encodeUtf8 sign)
-            (LBS.toStrict $ A.encode SignPayload {..})
+            (B64U.decodeLenient $ TE.encodeUtf8 sign)
+            (LBS.toStrict payload)
     if
-      | not goodSign ->
+      | not goodSign -> do
           liftIO $ toWorkerResponse $ responseServerError err403 {errBody = "Invalid Signature"}
-      | now <= expiry ->
+      | now >= expiry -> do
           liftIO $ toWorkerResponse $ responseServerError err403 {errBody = "URL already expired"}
       | otherwise -> do
           objInfo <-
