@@ -37,7 +37,6 @@ import Data.Aeson qualified as A
 import Data.ByteString.Base64.URL qualified as B64U
 import Data.ByteString.Char8 qualified as BS8
 import Data.ByteString.Lazy qualified as LBS
-import Data.String (fromString)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Clock.POSIX (POSIXTime, getPOSIXTime)
