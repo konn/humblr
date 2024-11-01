@@ -158,7 +158,7 @@ withImageOptions opts path
           stat <- RawResp.js_get_status resp
           statTxt <- RawResp.js_get_statusText resp
           headers <- RawResp.js_get_headers resp
-          auto <- fromHaskellByteString "automatic"
+          encode <- fromHaskellByteString "manual"
           cf <- emptyObject
           newResponse' (inject <$> fromNullable body) $
             Just $
@@ -166,7 +166,7 @@ withImageOptions opts path
                 PL.$ setPartialField "status" (toJSPrim stat)
                 PL.. setPartialField "statusText" statTxt
                 PL.. setPartialField "headers" (inject headers)
-                PL.. setPartialField "encodeBody" auto
+                PL.. setPartialField "encodeBody" encode
                 PL.. setPartialField "cf" cf
 
 foreign import javascript unsafe "console.log($1)"

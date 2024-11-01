@@ -116,23 +116,22 @@ imagesRoutes =
 
 thumbImage :: Worker HumblrEnv Raw
 thumbImage = Tagged \req env _ -> do
-  
   let images = Raw.getBinding "IMAGES" env
-  maybe (toWorkerResponse $ responseServerError err404) (<$ consoleLog "is just!")
+  maybe (toWorkerResponse $ responseServerError err404) pure
     =<< await'
     =<< images.thumb (T.intercalate "/" req.pathInfo)
 
 mediumImage :: Worker HumblrEnv Raw
 mediumImage = Tagged \req env _ -> do
   let images = Raw.getBinding "IMAGES" env
-  maybe (toWorkerResponse $ responseServerError err404) (<$ consoleLog "is just!")
+  maybe (toWorkerResponse $ responseServerError err404) pure
     =<< await'
     =<< images.medium (T.intercalate "/" req.pathInfo)
 
 largeImage :: Worker HumblrEnv Raw
 largeImage = Tagged \req env _ -> do
   let images = Raw.getBinding "IMAGES" env
-  maybe (toWorkerResponse $ responseServerError err404) (<$ consoleLog "is just!")
+  maybe (toWorkerResponse $ responseServerError err404) pure
     =<< await'
     =<< images.large (T.intercalate "/" req.pathInfo)
 
@@ -263,6 +262,3 @@ listArticles :: Maybe Word -> App (Paged Article)
 listArticles mpage = do
   db <- getBinding "Database"
   liftIO $ await' =<< db.listArticles mpage
-
-foreign import javascript unsafe "console.log($1)"
-  consoleLog :: USVString -> IO ()
