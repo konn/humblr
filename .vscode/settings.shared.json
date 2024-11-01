@@ -30,5 +30,8 @@
     "**/.hg/store/**": true,
     "**/.wrangler/**": true,
     "_builder/**": true
+  },
+  "evenBetterToml.schema.associations": {
+    "wrangler.toml": "/_build/router/node_modules/node_modules/wrangler/config-schema.json"
   }
 }

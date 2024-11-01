@@ -43,6 +43,7 @@ import Data.Map.Strict qualified as Map
 import Data.Proxy (Proxy (..))
 import Data.Text qualified as T
 import Data.Time (UTCTime)
+import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Vector qualified as V
 import GHC.Generics (Generic)
 import Language.WASM.JSVal.Convert
@@ -66,7 +67,13 @@ rootApiURIs = allFieldLinks' linkURI
 data RootAPI mode = RootAPI
   { apiRoutes :: mode :- "api" :> NamedRoutes RestApi
   , assets :: mode :- "assets" :> Raw
-  , resources :: mode :- "resources" :> Raw
+  , resources ::
+      mode
+        :- "resources"
+          :> CaptureAll "name" T.Text
+          :> QueryParam' '[Required] "expiry" POSIXTime
+          :> QueryParam' '[Required] "sign" T.Text
+          :> Raw
   , images :: mode :- "images" :> NamedRoutes ImagesRoutes
   , frontend :: mode :- NamedRoutes FrontendRoutes
   }

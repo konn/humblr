@@ -3,3 +3,6 @@ packages: */*.cabal
 optimization: 2
 semaphore: True
 multi-repl: True
+allow-newer:
+  primitive,
+  transformers

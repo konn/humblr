@@ -29,13 +29,14 @@ import Data.Maybe (fromMaybe)
 import Data.String (fromString)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Time.Clock.POSIX (POSIXTime)
 import GHC.Wasm.Object.Builtins
 import GHC.Wasm.Web.ReadableStream (ReadableStream)
 import Humblr.Types
 import Humblr.Worker.Database (DatabaseServiceClass)
 import Humblr.Worker.Images (ImagesServiceClass)
 import Humblr.Worker.SSR (SSRServiceClass)
-import Humblr.Worker.Storage (StorageServiceClass)
+import Humblr.Worker.Storage (GetParams (..), StorageServiceClass)
 import Network.Cloudflare.Worker.Binding hiding (getBinding, getSecret)
 import Network.Cloudflare.Worker.Binding qualified as Raw
 import Network.Cloudflare.Worker.Binding.Assets (AssetsClass)
@@ -58,7 +59,7 @@ type App = Handler HumblrEnv
 
 type HumblrEnv =
   BindingsClass
-    '["BASE_URL", "CF_TEAM_NAME"]
+    '["ROOT_URI", "CF_TEAM_NAME"]
     '["CF_AUD_TAG"]
     '[ '("Storage", StorageServiceClass)
      , '("Database", DatabaseServiceClass)
@@ -116,23 +117,29 @@ imagesRoutes =
 thumbImage :: Worker HumblrEnv Raw
 thumbImage = Tagged \req env _ -> do
   let images = Raw.getBinding "IMAGES" env
-  await' =<< images.thumb ("/" <> T.intercalate "/" req.pathInfo)
+  maybe (toWorkerResponse $ responseServerError err404) pure
+    =<< await'
+    =<< images.thumb ("/" <> T.intercalate "/" req.pathInfo)
 
 mediumImage :: Worker HumblrEnv Raw
 mediumImage = Tagged \req env _ -> do
   let images = Raw.getBinding "IMAGES" env
-  await' =<< images.medium ("/" <> T.intercalate "/" req.pathInfo)
+  maybe (toWorkerResponse $ responseServerError err404) pure
+    =<< await'
+    =<< images.medium ("/" <> T.intercalate "/" req.pathInfo)
 
 largeImage :: Worker HumblrEnv Raw
 largeImage = Tagged \req env _ -> do
   let images = Raw.getBinding "IMAGES" env
-  await' =<< images.large ("/" <> T.intercalate "/" req.pathInfo)
+  maybe (toWorkerResponse $ responseServerError err404) pure
+    =<< await'
+    =<< images.large ("/" <> T.intercalate "/" req.pathInfo)
 
-resources :: Worker HumblrEnv Raw
-resources = Cache.serveCachedRaw assetCacheOptions $ Tagged \req env _ -> do
+resources :: [T.Text] -> POSIXTime -> T.Text -> Worker HumblrEnv Raw
+resources paths expiry sign = Cache.serveCachedRaw assetCacheOptions $ Tagged \req env _ -> do
   let storage = Raw.getBinding "Storage" env
-      pth = T.intercalate "/" req.pathInfo
-  resp <- await' =<< storage.get pth
+      name = T.intercalate "/" paths
+  resp <- await' =<< storage.get GetParams {..}
   maybe (toWorkerResponse $ responseServerError err404 {errBody = "Not Found: " <> TE.encodeUtf8 (Req.getUrl req.rawRequest)}) pure resp
 
 frontend :: FrontendRoutes (AsWorker HumblrEnv)

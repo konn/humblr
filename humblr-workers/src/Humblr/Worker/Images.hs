@@ -1,5 +1,6 @@
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DuplicateRecordFields #-}
@@ -7,6 +8,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE LinearTypes #-}
+{-# LANGUAGE MagicHash #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -20,18 +22,22 @@
 module Humblr.Worker.Images (ImagesServiceClass, JSObject (..), handlers, ImagesService) where
 
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans.Maybe
 import Data.Aeson qualified as A
+import Data.ByteString.Lazy qualified as LBS
 import Data.Char qualified as C
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
+import GHC.Base (proxy#)
 import GHC.Generics
+import GHC.TypeLits (KnownSymbol, symbolVal')
 import GHC.Wasm.Object.Builtins
-import GHC.Wasm.Web.JSON (encodeJSON, stringify)
-import Humblr.Frontend.Types
+import GHC.Wasm.Web.Generated.Response qualified as RawResp
+import Humblr.Worker.Storage (SignParams (..), StorageServiceClass)
 import Network.Cloudflare.Worker.Binding (BindingsClass)
 import Network.Cloudflare.Worker.Binding.Service
-import Network.Cloudflare.Worker.Handler (JSHandlersClass, fetchFrom)
-import Network.Cloudflare.Worker.Request qualified as Req
-import Network.Cloudflare.Worker.Response (WorkerResponse)
+import Network.Cloudflare.Worker.FetchAPI (fetch)
+import Network.Cloudflare.Worker.Response (WorkerResponse, newResponse')
 import Servant.Cloudflare.Workers (err404)
 import Servant.Cloudflare.Workers.Internal.Response (toWorkerResponse)
 import Servant.Cloudflare.Workers.Internal.ServerError (responseServerError)
@@ -39,13 +45,13 @@ import Servant.Cloudflare.Workers.Prelude (toUrlPiece)
 import Wasm.Prelude.Linear qualified as PL
 
 data ImagesServiceFuns = ImagesServiceFuns
-  {thumb, medium, large :: T.Text -> App WorkerResponse}
+  {thumb, medium, large :: T.Text -> App (Maybe WorkerResponse)}
   deriving (Generic)
   deriving anyclass (ToService SSREnv)
 
 type App = ServiceM SSREnv '[]
 
-type SSREnv = BindingsClass '["ROOT_URI"] '[] '[ '("FRONTEND", JSHandlersClass)]
+type SSREnv = BindingsClass '["ROOT_URI"] '[] '[ '("STORAGE", StorageServiceClass)]
 
 type SSRFuns = Signature SSREnv ImagesServiceFuns
 
@@ -80,13 +86,46 @@ instance A.ToJSON ImageMetadata where
         , A.allNullaryToStringTag = True
         }
 
+class Commasep a where
+  commaSep :: a -> T.Text
+  default commaSep ::
+    (Generic a, GCommasep (Rep a)) =>
+    a ->
+    T.Text
+  commaSep = gcommaSep . from
+
+class GCommasep f where
+  gcommaList :: f () -> [T.Text]
+
+gcommaSep :: (GCommasep f) => f () -> T.Text
+gcommaSep = T.intercalate "," . gcommaList
+
+instance GCommasep U1 where
+  gcommaList = mempty
+
+instance (GCommasep f, GCommasep g) => GCommasep (f :*: g) where
+  gcommaList (l :*: r) = gcommaList l <> gcommaList r
+
+instance (GCommasep f) => GCommasep (D1 i f) where
+  gcommaList = gcommaList . unM1
+
+instance (GCommasep f) => GCommasep (C1 i f) where
+  gcommaList = gcommaList . unM1
+
+instance
+  (A.ToJSON a, KnownSymbol l) =>
+  GCommasep (S1 ('MetaSel ('Just l) z b c) (K1 i a))
+  where
+  gcommaList (M1 (K1 a)) = [toUrlPiece (symbolVal' @l proxy#) <> "=" <> toUrlPiece (TE.decodeUtf8 $ LBS.toStrict $ A.encode a)]
+
 data ImageOption = ImageOption {height, width :: !(Maybe Word), metadata :: !(Maybe ImageMetadata), fit :: !(Maybe Fit)}
   deriving (Show, Eq, Ord, Generic)
+  deriving anyclass (Commasep)
 
 instance A.ToJSON ImageOption where
   toJSON = A.genericToJSON A.defaultOptions {A.omitNothingFields = True}
 
-large :: T.Text -> App WorkerResponse
+large :: T.Text -> App (Maybe WorkerResponse)
 large =
   withImageOptions
     ImageOption
@@ -96,7 +135,7 @@ large =
       , fit = Just ScaleDown
       }
 
-medium :: T.Text -> App WorkerResponse
+medium :: T.Text -> App (Maybe WorkerResponse)
 medium =
   withImageOptions
     ImageOption
@@ -106,7 +145,7 @@ medium =
       , fit = Just ScaleDown
       }
 
-thumb :: T.Text -> App WorkerResponse
+thumb :: T.Text -> App (Maybe WorkerResponse)
 thumb =
   withImageOptions
     ImageOption
@@ -116,41 +155,39 @@ thumb =
       , fit = Just Contain
       }
 
-withImageOptions :: ImageOption -> T.Text -> App WorkerResponse
+withImageOptions :: ImageOption -> T.Text -> App (Maybe WorkerResponse)
 withImageOptions opts path
-  | T.null path = liftIO $ toWorkerResponse $ responseServerError err404
+  | T.null path = liftIO $ fmap Just $ toWorkerResponse $ responseServerError err404
   | otherwise = do
       liftIO $ consoleLog $ fromText $ "withImageOptions: " <> T.pack (show (opts, path))
-      blog <- getBinding "FRONTEND"
+      storage <- getBinding "STORAGE"
       root <- getEnv "ROOT_URI"
-      liftIO do
-        meth <- fromHaskellByteString "GET"
-        imgOpts <- encodeJSON opts
-        let cf =
-              newDictionary
-                PL.$ setPartialField "image"
-                $ nonNull
-                $ nonNull
-                $ upcast imgOpts
-            reqInit =
-              newDictionary
-                PL.$ setPartialField "method" (nonNull meth)
-                PL.. setPartialField "cf" (nonNull cf)
-        consoleLog =<< stringify (unsafeCast cf)
-        consoleLog =<< stringify (unsafeCast reqInit)
-        req <-
-          Req.newRequest
-            ( Just $
+      liftIO $ runMaybeT do
+        url <- MaybeT $ await' =<< storage.issueSignedURL SignParams {duration = 60, name = path}
+        liftIO do
+          let cdn =
                 T.intercalate
                   "/"
                   [ T.dropWhileEnd (== '/') root
-                  , toUrlPiece rootApiLinks.resources
-                  , T.dropWhile (== '/') path
+                  , "cdn-cgi/image"
+                  , commaSep opts
+                  , url
                   ]
-            )
-            $ Just reqInit
-        consoleLog $ "Making request..."
-        await =<< fetchFrom blog req
+          resp <- await =<< fetch (inject $ fromText @USVStringClass cdn) none
+          body <- RawResp.js_get_body resp
+          stat <- RawResp.js_get_status resp
+          statTxt <- RawResp.js_get_statusText resp
+          headers <- RawResp.js_get_headers resp
+          auto <- fromHaskellByteString "automatic"
+          cf <- emptyObject
+          newResponse' (inject <$> fromNullable body) $
+            Just $
+              newDictionary
+                PL.$ setPartialField "status" (toJSPrim stat)
+                PL.. setPartialField "statusText" statTxt
+                PL.. setPartialField "headers" (inject headers)
+                PL.. setPartialField "encodeBody" auto
+                PL.. setPartialField "cf" cf
 
 foreign import javascript unsafe "console.log($1)"
   consoleLog :: USVString -> IO ()

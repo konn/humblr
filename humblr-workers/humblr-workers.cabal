@@ -49,13 +49,17 @@ common defaults
 library
   import: defaults
   build-depends:
+    JuicyPixels,
+    JuicyPixels-extra,
     aeson,
+    base64-bytestring,
     bytestring,
     case-insensitive,
     cloudflare-worker,
     containers,
     ghc-wasm-compat,
     ghc-wasm-jsobjects,
+    http-types,
     humblr-core,
     humblr-frontend,
     lucid,
