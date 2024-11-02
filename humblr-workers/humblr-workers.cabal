@@ -59,6 +59,7 @@ library
     containers,
     ghc-wasm-compat,
     ghc-wasm-jsobjects,
+    http-media,
     http-types,
     humblr-core,
     humblr-frontend,

@@ -26,6 +26,7 @@ import Data.ByteString.Char8 qualified as BS8
 import Data.Map.Strict qualified as M
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Data.Time
 import GHC.Generics
 import GHC.Wasm.Object.Builtins
@@ -43,6 +44,7 @@ import Network.Cloudflare.Worker.Binding.Assets qualified as Assets
 import Network.Cloudflare.Worker.Binding.Service
 import Network.Cloudflare.Worker.Response (WorkerResponse)
 import Network.Cloudflare.Worker.Response qualified as Resp
+import Network.HTTP.Media (renderHeader)
 import Servant.Cloudflare.Workers.Prelude (Link, toUrlPiece)
 import Streaming.ByteString qualified as Q
 
@@ -83,8 +85,9 @@ renderArticle slug = do
               =<< Assets.fetch assets (inject @USVStringClass $ fromText $ root <> "/assets.json")
     let script = "/assets/" <> maybe "index.js" (.script) (A.decodeStrict @Assets resp)
         summary =
-          CM.nodeToPlainText
-            (fromMaybe <$> id <*> getSummary $ CM.commonmarkToNode [] $ art.body)
+          T.strip $
+            CM.nodeToPlainText
+              (fromMaybe <$> id <*> getSummary $ CM.commonmarkToNode [] $ art.body)
 
         body = renderBS do
           doctype_
@@ -95,11 +98,21 @@ renderArticle slug = do
               meta_ [name_ "viewport", content_ "width=device-width, initial-scale=1"]
               title_ $ toHtml summary <> " - ごはんぶらー"
               meta_ [name_ "twitter:card", content_ "summary"]
+              meta_ [name_ "twitter:title", content_ "ごはんぶらー"]
+              meta_ [name_ "twitter:description", content_ summary]
+              forM_ (listToMaybe art.attachments) \att -> do
+                meta_ [name_ "twitter:image", content_ $ linkWithRoot root $ imageLink Thumb $ T.splitOn "/" att.url]
+
+              meta_ [name_ "og:type", content_ "website"]
               meta_ [property_ "og:url", content_ $ linkWithRoot root $ rootApiLinks.frontend.articlePage slug]
-              meta_ [property_ "og:title", content_ summary]
+              meta_ [property_ "og:title", content_ "ごはんぶらー"]
               meta_ [property_ "og:description", content_ summary]
-              forM_ (listToMaybe art.attachments) \att ->
+              meta_ [property_ "og:site_name", content_ "ごはんぶらー"]
+              forM_ (listToMaybe art.attachments) \att -> do
                 meta_ [property_ "og:image", content_ $ linkWithRoot root $ imageLink Ogp $ T.splitOn "/" att.url]
+                meta_ [property_ "og:image:width", content_ "1024"]
+                meta_ [property_ "og:image:height", content_ "1024"]
+                meta_ [property_ "og:image:type", content_ $ TE.decodeUtf8 $ renderHeader $ imageCType att.ctype]
 
               link_ [rel_ "stylesheet", type_ "text/css", href_ "https://cdn.jsdelivr.net/npm/bulma@1.0.0/css/bulma.min.css"]
               link_ [rel_ "stylesheet", type_ "text/css", href_ "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"]
