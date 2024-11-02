@@ -68,20 +68,17 @@ frontend:
   COPY (+optimised-wasm/dist --target=humblr-frontend:exe:humblr-frontend) ./dist
   LET ORIG_WASM=humblr-frontend.wasm
   LET SHASUM_WASM=$(sha1sum dist/${ORIG_WASM} | cut -c1-7)
-  LET FINAL_WASM=humblr-frontend-${SHASUM_WASM}.wasm
-  RUN mv dist/${ORIG_WASM} dist/${FINAL_WASM}
+  LET FINAL_WASM=${ORIG_WASM}?${SHASUM_WASM}
 
   LET GHC_JSFFI_ORIG=ghc_wasm_jsffi.js
   LET SHASUM_JSFFI=$(sha1sum dist/${GHC_JSFFI_ORIG} | cut -c1-7)
-  LET GHC_JSFFI_FINAL=ghc_wasm_jsffi-${SHASUM_JSFFI}.js
-  RUN mv dist/${GHC_JSFFI_ORIG} dist/${GHC_JSFFI_FINAL}
+  LET GHC_JSFFI_FINAL=${GHC_JSFFI_ORIG}?${SHASUM_JSFFI}
 
   COPY humblr-frontend/data/index.js dist/index.js
   RUN sed -i "s/${ORIG_WASM}/${FINAL_WASM}/g" dist/index.js
   RUN sed -i "s/${GHC_JSFFI_ORIG}/${GHC_JSFFI_FINAL}/g" dist/index.js
   LET INDEX_JS_SHASUM=$(sha1sum dist/index.js | cut -c1-7)
-  LET INDEX_JS_FINAL=index-${INDEX_JS_SHASUM}.js
-  RUN mv dist/index.js dist/${INDEX_JS_FINAL}
+  LET INDEX_JS_FINAL=index.js?${INDEX_JS_SHASUM}
   COPY humblr-frontend/data/index.html dist/index.html
   RUN sed -i "s/index.js/${INDEX_JS_FINAL}/g" dist/index.html
   RUN echo -n "${INDEX_JS_FINAL}" | jq -R -M -c '{script: .}' > dist/assets.json
