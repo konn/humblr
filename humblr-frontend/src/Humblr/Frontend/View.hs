@@ -517,9 +517,12 @@ articlesList title as =
       , p_
           [class_ "content"]
           [ div_
-              [class_ "grid is-col-min-16"]
-              $ map (div_ [class_ "cell"] . pure . articleOverview arts)
-              $ toList payload
+              [class_ "fixed-grid has-1-cols-mobile has-3-cols-tablet has-4-cols-desktop has-4-cols-widescreen has-4-cols-fullhd"]
+              [ div_
+                  [class_ "grid is-col-min-32"]
+                  $ map (div_ [class_ "cell"] . pure . articleOverview arts)
+                  $ toList payload
+              ]
           ]
       , let backAttr =
               class_ (MS.unwords $ "pagination-previous" : ["is-disabled" | page <= 0])
@@ -586,6 +589,7 @@ articleOverview arts art@Article {..} =
                                         [ img_
                                             [ src_ $ resouceUrl Medium img.url
                                             , alt_ img.name
+                                            , width_ "512px"
                                             ]
                                         ]
                                     ]
@@ -600,9 +604,16 @@ articleOverview arts art@Article {..} =
                     [class_ "level"]
                     [ div_
                         [class_ "level-left"]
-                        [ div_
-                            [class_ "tags are-normal"]
-                            [span_ [class_ "tag"] [linkToTag FrontEndArticle tag [text tag]] | tag <- tags]
+                        [ div_ [class_ "field is-grouped is-grouped-multiline"] $
+                            [ div_
+                                [class_ "control"]
+                                [ div_
+                                    [class_ "tags"]
+                                    [ span_ [class_ "tag"] [linkToTag FrontEndArticle tag [text tag]]
+                                    ]
+                                ]
+                            | tag <- tags
+                            ]
                         ]
                     , div_
                         [class_ "level-right"]
