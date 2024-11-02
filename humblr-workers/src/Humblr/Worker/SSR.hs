@@ -99,11 +99,13 @@ renderArticle slug = do
               meta_ [name_ "description", content_ summary]
               meta_ [name_ "keywords", content_ $ T.intercalate "," art.tags]
               title_ $ toHtml summary <> " - ごはんぶらー"
-              meta_ [name_ "twitter:card", content_ "summary"]
-              meta_ [name_ "twitter:title", content_ "ごはんぶらー"]
-              meta_ [name_ "twitter:description", content_ summary]
-              forM_ (listToMaybe art.attachments) \att -> do
-                meta_ [name_ "twitter:image", content_ $ linkWithRoot root $ imageLink Thumb $ T.splitOn "/" att.url]
+
+              link_ [rel_ "stylesheet", type_ "text/css", href_ "https://cdn.jsdelivr.net/npm/bulma@1.0.0/css/bulma.min.css"]
+              link_ [rel_ "stylesheet", type_ "text/css", href_ "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"]
+              script_ mempty `with` [src_ script, type_ "module", async_ "", defer_ ""]
+
+              meta_ [property_ "twitter:card", name_ "twitter:card", content_ "summary_large_image"]
+              meta_ [property_ "twitter:site", name_ "twitter:site", content_ "@mr_konn"]
 
               meta_ [property_ "og:type", content_ "website"]
               meta_ [property_ "og:url", content_ $ linkWithRoot root $ rootApiLinks.frontend.articlePage slug]
@@ -115,10 +117,6 @@ renderArticle slug = do
                 meta_ [property_ "og:image:width", content_ "1200"]
                 meta_ [property_ "og:image:height", content_ "630"]
                 meta_ [property_ "og:image:type", content_ $ TE.decodeUtf8 $ renderHeader $ imageCType att.ctype]
-
-              link_ [rel_ "stylesheet", type_ "text/css", href_ "https://cdn.jsdelivr.net/npm/bulma@1.0.0/css/bulma.min.css"]
-              link_ [rel_ "stylesheet", type_ "text/css", href_ "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"]
-              script_ mempty `with` [src_ script, type_ "module", async_ "", defer_ ""]
 
             body_ $
               toHtml $
