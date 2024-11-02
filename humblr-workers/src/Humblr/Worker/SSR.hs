@@ -97,6 +97,7 @@ renderArticle slug = do
               meta_ [httpEquiv_ "Content-Type", content_ "text/html; charset=utf-8"]
               meta_ [name_ "viewport", content_ "width=device-width, initial-scale=1"]
               meta_ [name_ "description", content_ summary]
+              meta_ [name_ "keywords", content_ $ T.intercalate "," art.tags]
               title_ $ toHtml summary <> " - ごはんぶらー"
               meta_ [name_ "twitter:card", content_ "summary"]
               meta_ [name_ "twitter:title", content_ "ごはんぶらー"]
