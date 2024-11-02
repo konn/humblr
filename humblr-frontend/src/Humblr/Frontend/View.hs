@@ -444,7 +444,7 @@ articleView mode art@Article {..} =
                       [ div_
                           [class_ "cell"]
                           [ div_
-                              [class_ "columns is-centered"]
+                              [class_ "container"]
                               [ div_
                                   [class_ "column"]
                                   [ figure_
@@ -579,11 +579,14 @@ articleOverview arts art@Article {..} =
                             [class_ "grid"]
                             [ div_
                                 [class_ "cell", styleInline_ "justify-content: center;"]
-                                [ figure_
-                                    [class_ "image", styleInline_ "max-width: 512px;"]
-                                    [ img_
-                                        [ src_ $ resouceUrl Medium img.url
-                                        , alt_ img.name
+                                [ div_
+                                    [class_ "container"]
+                                    [ figure_
+                                        [class_ "image", styleInline_ "max-width: 512px;"]
+                                        [ img_
+                                            [ src_ $ resouceUrl Medium img.url
+                                            , alt_ img.name
+                                            ]
                                         ]
                                     ]
                                 ]
