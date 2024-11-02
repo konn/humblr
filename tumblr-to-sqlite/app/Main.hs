@@ -1,4 +1,6 @@
 module Main (main) where
 
+import Humblr.Migration.Tumblr
+
 main :: IO ()
-main = pure ()
+main = defaultMain
