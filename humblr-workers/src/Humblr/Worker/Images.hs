@@ -90,7 +90,7 @@ large :: T.Text -> App (Maybe WorkerResponse)
 large =
   withImageOptions
     ImageOption
-      { width = Just 768
+      { width = Just 1024
       , height = Nothing
       , metadata = Just None
       , fit = Just ScaleDown
@@ -110,8 +110,8 @@ thumb :: T.Text -> App (Maybe WorkerResponse)
 thumb =
   withImageOptions
     ImageOption
-      { width = Just 128
-      , height = Just 128
+      { width = Just 256
+      , height = Just 256
       , metadata = Just None
       , fit = Just Contain
       }
