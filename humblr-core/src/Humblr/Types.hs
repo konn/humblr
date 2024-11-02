@@ -41,20 +41,23 @@ import Data.Aeson qualified as J
 import Data.Generics.Labels ()
 import Data.Map.Strict qualified as Map
 import Data.Proxy (Proxy (..))
+import Data.String (fromString)
 import Data.Text qualified as T
 import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Vector qualified as V
 import GHC.Generics (Generic)
+import GHC.Wasm.Object.Builtins (USVStringClass, toText)
 import Language.WASM.JSVal.Convert
 import Network.Cloudflare.Worker.Binding.D1 (FromD1Value (..), ToD1Value (..))
-import Network.Cloudflare.Worker.Binding.Service (IsServiceArg)
+import Network.Cloudflare.Worker.Binding.Service (IsServiceArg (..))
 import Network.HTTP.Media (MediaType)
 import Network.HTTP.Media qualified as M
 import Servant.API
 import Servant.Auth
 import Servant.Auth.JWT
 import Servant.Links
+import Text.Read (readEither)
 
 type RequireUser = Auth '[CloudflareZeroTrust, JWT] User
 
@@ -80,9 +83,15 @@ data RootAPI mode = RootAPI
   deriving (Generic)
 
 data ImageSize = Thumb | Medium | OGP | Large
-  deriving (Show, Eq, Generic, Enum, Bounded)
+  deriving (Show, Read, Eq, Generic, Enum, Bounded)
   deriving anyclass (FromJSON, ToJSON)
-  deriving (IsServiceArg) via ViaJSON ImageSize
+
+instance IsServiceArg ImageSize where
+  type ServiceArg ImageSize = USVStringClass
+  encodeServiceArg = pure . fromString . show
+  {-# INLINE encodeServiceArg #-}
+  parseServiceArg = pure . readEither . T.unpack . toText
+  {-# INLINE parseServiceArg #-}
 
 instance ToHttpApiData ImageSize where
   toUrlPiece = T.toLower . T.pack . show

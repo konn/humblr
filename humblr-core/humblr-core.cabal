@@ -48,6 +48,7 @@ library
     cmark,
     containers,
     generic-lens,
+    ghc-wasm-jsobjects,
     http-media,
     lens,
     servant,
