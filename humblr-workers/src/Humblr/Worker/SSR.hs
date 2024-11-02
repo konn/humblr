@@ -105,7 +105,7 @@ renderArticle slug = do
               forM_ (listToMaybe art.attachments) \att -> do
                 meta_ [name_ "twitter:image", content_ $ linkWithRoot root $ imageLink Thumb $ T.splitOn "/" att.url]
 
-              meta_ [name_ "og:type", content_ "website"]
+              meta_ [property_ "og:type", content_ "website"]
               meta_ [property_ "og:url", content_ $ linkWithRoot root $ rootApiLinks.frontend.articlePage slug]
               meta_ [property_ "og:title", content_ "ごはんぶらー"]
               meta_ [property_ "og:description", content_ summary]
