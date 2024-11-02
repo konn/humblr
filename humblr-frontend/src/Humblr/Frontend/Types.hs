@@ -309,7 +309,6 @@ data Action
   | FileChanged !ElementId
   | AddBlobURLs !BlobURLs
   | RemoveBlobURL !ImageUrl
-  | Redirect !URI
   deriving (Show, Generic)
 
 newtype ElementId = ElementId {runElementId :: MisoString}

@@ -285,11 +285,6 @@ updateModel (AddBlobURLs urls) m =
   noEff $ m & #mode . blobURLsT <>~ urls
 updateModel (RemoveBlobURL url) m =
   noEff $ m & #mode . blobURLsT . #urls %~ OM.filter (const $ (/= url) . (.url))
-updateModel (Redirect url) m =
-  m <# do
-    url' <- val $ show url
-    setProp "location" url' . Object =<< eval ("window" :: T.Text)
-    pure $ HandleUrl url
 
 withArticles :: Maybe Word -> (Paged Article -> JSM Action) -> JSM Action
 withArticles mcur k = do
@@ -347,7 +342,7 @@ openTopPage :: Maybe Word -> Action
 openTopPage = openEndpoint . rootApiURIs.frontend.topPage
 
 openArticle :: T.Text -> Action
-openArticle = Redirect . rootApiURIs.frontend.articlePage
+openArticle = openEndpoint . rootApiURIs.frontend.articlePage
 
 openEditArticle :: T.Text -> Action
 openEditArticle = openEndpoint . rootApiURIs.frontend.editArticle

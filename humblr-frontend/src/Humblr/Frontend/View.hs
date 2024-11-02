@@ -323,11 +323,10 @@ editMainView Edit art =
                       [ div_
                           [class_ "grid"]
                           [ div_
-                              [ class_ "cell"
-                              ]
+                              [class_ "cell"]
                               [ figure_
-                                  [class_ "image is-128by128"]
-                                  [ img_ [src_ $ attachmentUrl Thumb img.url]
+                                  [class_ "image is-128by128", styleInline_ "max-width: 256px"]
+                                  [ img_ [width_ "256px", src_ $ attachmentUrl Thumb img.url]
                                   , a_
                                       [ class_ "delete is-large"
                                       , onClick (RemoveBlobURL img.url)
@@ -444,7 +443,7 @@ articleView mode art@Article {..} =
                       [class_ "grid"]
                       [ div_
                           [class_ "cell", styleInline_ "justify-content: center;"]
-                          [ figure_ [class_ "image"] [img_ [styleInline_ "max-width: 1024px;", src_ $ resouceUrl Large img.url, alt_ img.name]]
+                          [ figure_ [class_ "image", styleInline_ "max-width: 1024px;"] [img_ [width_ "1024px", src_ $ resouceUrl Large img.url, alt_ img.name]]
                           ]
                       | img <- attachments
                       ]
@@ -570,11 +569,11 @@ articleOverview arts art@Article {..} =
                             [ div_
                                 [class_ "cell", styleInline_ "justify-content: center;"]
                                 [ figure_
-                                    [class_ "image"]
+                                    [class_ "image", styleInline_ "max-width: 512px;"]
                                     [ img_
                                         [ src_ $ resouceUrl Medium img.url
                                         , alt_ img.name
-                                        , styleInline_ "max-width: 512px;"
+                                        , width_ "512px"
                                         ]
                                     ]
                                 ]
