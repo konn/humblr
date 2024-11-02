@@ -296,7 +296,7 @@ mkArticleUpdateBody :: App (Preparation '[ArticleId, ArticleUpdate])
 mkArticleUpdateBody = do
   prepare "UPDATE articles SET body = ?1, lastUpdate = ?2 WHERE id = ?3" <&> \prep ->
     Preparation \aid ArticleUpdate {..} -> do
-      now <- liftIO getCurrentTime
+      now <- maybe (liftIO getCurrentTime) pure updatedAt
       liftIO $
         D1.bind prep $
           V.fromList
@@ -381,12 +381,14 @@ mkInsertArticleQ =
   prepare "INSERT INTO articles (body, createdAt, lastUpdate, slug) VALUES (?1, ?2, ?3, ?4)" <&> \prep ->
     Preparation \ArticleSeed {..} -> do
       now <- liftIO getCurrentTime
+      let created = fromMaybe now createdAt
+          updated = fromMaybe now updatedAt
       liftIO $
         D1.bind prep $
           V.fromList
             [ D1.toD1ValueView body
-            , D1.toD1ValueView now
-            , D1.toD1ValueView now
+            , D1.toD1ValueView created
+            , D1.toD1ValueView updated
             , D1.toD1ValueView slug
             ]
 

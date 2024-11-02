@@ -43,27 +43,51 @@ common defaults
 library
   import: defaults
   build-depends:
+    Glob-effectful,
     aeson,
-    attoparsec-aeson,
+    async,
     bytestring,
+    case-insensitive,
+    cmark,
     containers,
-    direct-sqlite,
+    effectful,
+    effectful-core,
+    effectful-lens,
+    generic-lens,
+    http-client,
+    http-client-tls,
+    humblr-core,
+    humblr-frontend,
     lens,
+    log-effectful,
+    log-effectful-extra,
+    monad-loops,
     nonce,
+    optparse-applicative,
+    path,
+    path-tagged,
+    path-tagged-effectful,
+    random-effectful,
+    safe-exceptions,
+    scalpel,
+    servant,
+    servant-auth-lite,
+    servant-auth-lite-client,
+    servant-client,
+    servant-client-core,
     stm,
+    stm-chans,
     stm-containers,
-    streaming-attoparsec,
-    streaming-bytestring,
-    streaming-http,
+    tagsoup,
     text,
+    time,
     unordered-containers,
-    wai,
-    warp,
     wreq,
+    yaml,
 
   hs-source-dirs: src
   -- cabal-gild: discover src --exclude=src/**/Internal.hs --exclude=src/**/Internal/**/*.hs
-  exposed-modules: Humblr.Migration.Tumblr.Sqlite
+  exposed-modules: Humblr.Migration.Tumblr
   -- cabal-gild: discover src --include=src/**/Internal.hs --include=src/**/Internal/**/*.hs
   other-modules:
 

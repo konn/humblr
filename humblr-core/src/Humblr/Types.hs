@@ -220,7 +220,7 @@ parseImageCType "image/png" = Just Png
 parseImageCType "image/jpeg" = Just Jpeg
 parseImageCType _ = Nothing
 
-data ArticleUpdate = ArticleUpdate {body :: T.Text, tags :: [T.Text], attachments :: [Attachment]}
+data ArticleUpdate = ArticleUpdate {body :: T.Text, tags :: [T.Text], attachments :: [Attachment], createdAt :: Maybe UTCTime, updatedAt :: Maybe UTCTime}
   deriving stock (Generic, Show, Eq)
   deriving anyclass (FromJSON, ToJSON)
   deriving (IsServiceArg) via ViaJSON ArticleUpdate
@@ -243,6 +243,8 @@ data ArticleSeed = ArticleSeed
   , slug :: !T.Text
   , tags :: ![T.Text]
   , attachments :: ![Attachment]
+  , createdAt :: !(Maybe UTCTime)
+  , updatedAt :: !(Maybe UTCTime)
   }
   deriving stock (Generic, Show, Eq)
   deriving anyclass (FromJSON, ToJSON)

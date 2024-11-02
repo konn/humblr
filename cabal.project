@@ -6,3 +6,25 @@ multi-repl: True
 allow-newer:
   primitive,
   transformers
+
+source-repository-package
+  type: git
+  location: https://github.com/deepflowinc/effectful-extras
+  tag: 4c982cd74e6992f14749577ab941bc93bfc40ae7
+  subdir:
+    streaming-http-effectful
+    effectful-lens
+    log-effectful-extra
+    random-effectful
+    streaming-effectful
+    Glob-effectful
+    path-tagged-effectful
+    effectful-lens
+
+source-repository-package
+  type: git
+  location: https://github.com/deepflowinc/streaming-extras
+  tag: d4273ea4ff34cfd7ed2d464f52f65120d5893353
+  subdir:
+    streaming-http
+    streaming-servant-orphans

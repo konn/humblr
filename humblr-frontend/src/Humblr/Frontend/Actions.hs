@@ -51,7 +51,6 @@ import Control.Exception.Safe (Exception (..), tryAny)
 import Control.Lens hiding ((#))
 import Control.Monad (forM, forM_, guard)
 import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Maybe (MaybeT (..), hoistMaybe)
 import Data.Aeson qualified as A
 import Data.Foldable qualified as F

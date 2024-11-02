@@ -170,7 +170,7 @@ toArticleUpdate :: T.Text -> ArticleFragment -> JSM ArticleUpdate
 toArticleUpdate slug ArticleFragment {..} = do
   attachments <- toAttachments slug blobURLs
 
-  pure ArticleUpdate {tags = F.toList tags, ..}
+  pure ArticleUpdate {tags = F.toList tags, createdAt = Nothing, updatedAt = Nothing, ..}
 
 toAttachments :: T.Text -> BlobURLs -> JSM [Attachment]
 toAttachments slug blobURLs =
@@ -190,7 +190,7 @@ toAttachments slug blobURLs =
 toArticleSeed :: T.Text -> ArticleFragment -> JSM ArticleSeed
 toArticleSeed slug ArticleFragment {..} = do
   attachments <- toAttachments slug blobURLs
-  pure ArticleSeed {tags = F.toList tags, ..}
+  pure ArticleSeed {tags = F.toList tags, updatedAt = Nothing, createdAt = Nothing, ..}
 
 toArticleEdition :: Article -> ArticleFragment
 toArticleEdition Article {..} =
