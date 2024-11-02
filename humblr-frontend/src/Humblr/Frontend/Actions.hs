@@ -102,7 +102,10 @@ updateModel (OpenTopPage mcur) m =
     withArticles mcur $ pure . ShowTopPage . MkTopPage
 updateModel (ShowTopPage topPage) m = noEff m {mode = TopPage topPage}
 updateModel (OpenArticle slug) m =
-  m <# withArticleSlug slug (pure . ShowArticle)
+  m
+    <# if Just slug == m ^? #mode . #_ArticlePage . #slug
+      then pure NoOp
+      else withArticleSlug slug (pure . ShowArticle)
 updateModel (ShowArticle article) m = noEff m {mode = ArticlePage article}
 updateModel (SwitchEditViewState st) m =
   noEff $ m & #mode . viewStateT .~ st
