@@ -143,7 +143,7 @@ articlePage slug = Cache.serveCachedRaw assetCacheOptions $ Tagged \_ env _ -> d
   await . jsPromise =<< renderer.renderArticle slug
 
 serveIndex :: Worker HumblrEnv Raw
-serveIndex = Cache.serveCachedRaw assetCacheOptions $ Tagged \_ env _ -> do
+serveIndex = Tagged \_ env _ -> do
   let root = fromSuccess $ J.fromJSON $ Raw.getEnv "ROOT_URI" env
       link = "/" <> toUrlPiece rootApiLinks.assets <> "/index.html"
       !url = fromText @USVStringClass $ root <> link
