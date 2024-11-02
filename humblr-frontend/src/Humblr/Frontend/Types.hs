@@ -276,6 +276,7 @@ data Modal = Share !ShareInfo
 data Action
   = ChangeUrl !URI
   | HandleUrl !URI
+  | StartWithUrl !URI
   | OpenTopPage !(Maybe Word)
   | ShowTopPage !TopPage
   | OpenArticle !T.Text

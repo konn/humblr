@@ -36,7 +36,7 @@ defaultApp = miso \url ->
   App
     { subs = [uriSub HandleUrl]
     , view = viewModel
-    , initialAction = HandleUrl url
+    , initialAction = StartWithUrl url
     , ..
     }
   where

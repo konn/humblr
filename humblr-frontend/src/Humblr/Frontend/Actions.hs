@@ -49,8 +49,11 @@ module Humblr.Frontend.Actions (
 import Control.Arrow ((&&&))
 import Control.Exception.Safe (Exception (..), tryAny)
 import Control.Lens hiding ((#))
-import Control.Monad (forM, forM_)
+import Control.Monad (forM, forM_, guard)
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Maybe (MaybeT (..), hoistMaybe)
+import Data.Aeson qualified as A
 import Data.Foldable qualified as F
 import Data.Functor (void)
 import Data.Generics.Labels ()
@@ -97,6 +100,7 @@ updateModel (ChangeUrl url) m =
     pushURI url
     pure (HandleUrl url)
 updateModel (HandleUrl url) m = handleUrl url m
+updateModel (StartWithUrl url) m = m <# startUrl url
 updateModel (OpenAdminPage mcur) m =
   m <# do
     withArticles mcur $ pure . ShowAdminPage . MkAdminPage
@@ -300,6 +304,39 @@ updateModel (AddBlobURLs urls) m =
 updateModel (RemoveBlobURL url) m =
   noEff $ m & #mode . blobURLsT . #urls %~ OM.filter (const $ (/= url) . (.url))
 
+startUrl :: URI -> JSM Action
+startUrl url = do
+  either (const $ pure $ HandleUrl url) id $
+    route @(ToServantApi FrontendRoutes)
+      Proxy
+      (toServant starter)
+      url
+  where
+    starter :: FrontendRoutes (AsRoute (JSM Action))
+    starter =
+      FrontendRoutes
+        { articlePage = startArticle url
+        , tagArticles = const $ const $ pure $ HandleUrl url
+        , editArticle = const $ pure $ HandleUrl url
+        , newArticle = pure $ HandleUrl url
+        , adminHome = const $ pure $ HandleUrl url
+        , topPage = const $ pure $ HandleUrl url
+        }
+
+startArticle :: URI -> T.Text -> JSM Action
+startArticle url slug = do
+  consoleLog $ "starting article..."
+  marticle <- getProp "article" . Object =<< eval ("window" :: String)
+  consoleLog "Got Article"
+  absent <- ghcjsPure $ isUndefined marticle
+  consoleLog $ "Is undefined?: " <> toMisoString (show absent)
+  fromMaybe (HandleUrl url) <$> runMaybeT do
+    guard $ not absent
+    src <- MaybeT $ fromJSVal marticle
+    art <- hoistMaybe (A.decodeStrictText src)
+    guard $ art.slug == slug
+    pure $ ShowArticle art
+
 withArticles :: Maybe Word -> (Paged Article -> JSM Action) -> JSM Action
 withArticles mcur k = do
   eith <- tryAny $ callApi (api.listArticles mcur)
@@ -346,7 +383,10 @@ handleUrl url =
     routes :: FrontendRoutes (AsRoute (Model -> Effect Action Model))
     routes = FrontendRoutes {..}
     topPage mcur m = m <# pure (OpenTopPage mcur)
-    articlePage slug m = m <# pure (OpenArticle slug)
+    articlePage slug m =
+      m <# do
+        consoleLog "Handling article"
+        pure (OpenArticle slug)
     newArticle m = m <# pure OpenNewArticle
     editArticle slug m = m <# pure (OpenEditArticle slug)
     tagArticles tag mcur m = m <# pure (OpenTagArticles tag mcur)

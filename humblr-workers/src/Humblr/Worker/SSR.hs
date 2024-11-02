@@ -22,6 +22,7 @@ module Humblr.Worker.SSR (SSRServiceClass, JSObject (..), handlers, SSRService) 
 import Control.Monad (forM_)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as A
+import Data.Aeson.Text qualified as A
 import Data.ByteString.Char8 qualified as BS8
 import Data.Map.Strict qualified as M
 import Data.Maybe (fromMaybe, listToMaybe)
@@ -98,6 +99,11 @@ renderArticle slug = do
               meta_ [name_ "viewport", content_ "width=device-width, initial-scale=1"]
               meta_ [name_ "description", content_ summary]
               meta_ [name_ "keywords", content_ $ T.intercalate "," art.tags]
+              script_ [] $
+                "Object.defineProperty(window, 'article', {value: "
+                  <> A.encodeToLazyText (A.encodeToLazyText art)
+                  <> ", writable: false});"
+
               title_ $ toHtml summary <> " - ごはんぶらー"
 
               link_ [rel_ "stylesheet", type_ "text/css", href_ "https://cdn.jsdelivr.net/npm/bulma@1.0.0/css/bulma.min.css"]
