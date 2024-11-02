@@ -517,7 +517,7 @@ articlesList title as =
       , p_
           [class_ "content"]
           [ div_
-              [class_ "grid is-col-min-10"]
+              [class_ "grid is-col-min-16"]
               $ map (div_ [class_ "cell"] . pure . articleOverview arts)
               $ toList payload
           ]
@@ -582,7 +582,6 @@ articleOverview arts art@Article {..} =
                                     [ img_
                                         [ src_ $ resouceUrl Medium img.url
                                         , alt_ img.name
-                                        , width_ "512px"
                                         ]
                                     ]
                                 ]
