@@ -442,8 +442,17 @@ articleView mode art@Article {..} =
                 ( [ div_
                       [class_ "grid"]
                       [ div_
-                          [class_ "cell", styleInline_ "justify-content: center;"]
-                          [ figure_ [class_ "image", styleInline_ "max-width: 1024px;"] [img_ [width_ "1024px", src_ $ resouceUrl Large img.url, alt_ img.name]]
+                          [class_ "cell"]
+                          [ div_
+                              [class_ "columns is-centered"]
+                              [ div_
+                                  [class_ "column"]
+                                  [ figure_
+                                      [class_ "image", styleInline_ "max-width: 1024px;"]
+                                      [ img_ [width_ "1024px", src_ $ resouceUrl Large img.url, alt_ img.name]
+                                      ]
+                                  ]
+                              ]
                           ]
                       | img <- attachments
                       ]

@@ -235,7 +235,7 @@ updateModel (ShareArticle art) m =
         <&> #uriFragment .~ ""
     let url =
           rootUri {uriPath = "/" <> T.unpack (toUrlPiece $ rootApiLinks.frontend.articlePage art.slug)}
-        title = CM.nodeToPlainText $ (fromMaybe <$> id <*> getSummary) $ CM.commonmarkToNode [] art.body
+        title = T.strip $ CM.nodeToPlainText $ (fromMaybe <$> id <*> getSummary) $ CM.commonmarkToNode [] art.body
         shareDesc = ShareInfo {text = title, ..}
     if absent
       then pure $ ShowModal $ Share shareDesc

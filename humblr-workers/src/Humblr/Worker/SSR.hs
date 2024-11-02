@@ -96,6 +96,7 @@ renderArticle slug = do
               meta_ [charset_ "utf-8"]
               meta_ [httpEquiv_ "Content-Type", content_ "text/html; charset=utf-8"]
               meta_ [name_ "viewport", content_ "width=device-width, initial-scale=1"]
+              meta_ [name_ "description", content_ summary]
               title_ $ toHtml summary <> " - ごはんぶらー"
               meta_ [name_ "twitter:card", content_ "summary"]
               meta_ [name_ "twitter:title", content_ "ごはんぶらー"]
@@ -110,8 +111,8 @@ renderArticle slug = do
               meta_ [property_ "og:site_name", content_ "ごはんぶらー"]
               forM_ (listToMaybe art.attachments) \att -> do
                 meta_ [property_ "og:image", content_ $ linkWithRoot root $ imageLink Ogp $ T.splitOn "/" att.url]
-                meta_ [property_ "og:image:width", content_ "1024"]
-                meta_ [property_ "og:image:height", content_ "1024"]
+                meta_ [property_ "og:image:width", content_ "1200"]
+                meta_ [property_ "og:image:height", content_ "630"]
                 meta_ [property_ "og:image:type", content_ $ TE.decodeUtf8 $ renderHeader $ imageCType att.ctype]
 
               link_ [rel_ "stylesheet", type_ "text/css", href_ "https://cdn.jsdelivr.net/npm/bulma@1.0.0/css/bulma.min.css"]

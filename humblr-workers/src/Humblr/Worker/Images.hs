@@ -112,9 +112,9 @@ toImageOption Large =
 toImageOption Ogp =
   ImageOption
     { width = Just 1200
-    , height = Just 1200
+    , height = Just 630
     , metadata = Just None
-    , fit = Just ScaleDown
+    , fit = Just Cover
     }
 
 get :: ImageSize -> [T.Text] -> App WorkerResponse
