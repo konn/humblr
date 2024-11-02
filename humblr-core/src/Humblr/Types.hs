@@ -94,7 +94,7 @@ resulting WASM binary exceeds 1000KiB...
 -}
 data ImagesAPI mode = ImagesAPI
   { thumb :: mode :- "thumb" :> CaptureAll "path" T.Text :> Raw
-  , medium :: mode :- "ogp" :> CaptureAll "path" T.Text :> Raw
+  , medium :: mode :- "medium" :> CaptureAll "path" T.Text :> Raw
   , large :: mode :- "large" :> CaptureAll "path" T.Text :> Raw
   , ogp :: mode :- "ogp" :> CaptureAll "path" T.Text :> Raw
   }
