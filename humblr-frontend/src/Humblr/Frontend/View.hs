@@ -445,12 +445,9 @@ articleView mode art@Article {..} =
                           [class_ "cell"]
                           [ div_
                               [class_ "container"]
-                              [ div_
-                                  [class_ "column"]
-                                  [ figure_
-                                      [class_ "image", styleInline_ "max-width: 1024px;"]
-                                      [ img_ [width_ "1024px", src_ $ resouceUrl Large img.url, alt_ img.name]
-                                      ]
+                              [ figure_
+                                  [class_ "image", styleInline_ "max-width: 1024px;"]
+                                  [ img_ [width_ "1024px", src_ $ resouceUrl Large img.url, alt_ img.name]
                                   ]
                               ]
                           ]
@@ -579,15 +576,12 @@ articleOverview arts art@Article {..} =
                             [class_ "grid"]
                             [ div_
                                 [class_ "cell", styleInline_ "justify-content: center;"]
-                                [ div_
-                                    [class_ "container"]
-                                    [ figure_
-                                        [class_ "image", styleInline_ "max-width: 512px;"]
-                                        [ img_
-                                            [ src_ $ resouceUrl Medium img.url
-                                            , alt_ img.name
-                                            , width_ "512px"
-                                            ]
+                                [ figure_
+                                    [class_ "image", styleInline_ "max-width: 512px;"]
+                                    [ img_
+                                        [ src_ $ resouceUrl Medium img.url
+                                        , alt_ img.name
+                                        , width_ "512px"
                                         ]
                                     ]
                                 ]
