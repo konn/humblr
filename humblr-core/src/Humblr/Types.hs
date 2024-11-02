@@ -3,6 +3,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -82,7 +83,7 @@ data RootAPI mode = RootAPI
   }
   deriving (Generic)
 
-data ImageSize = Thumb | Medium | OGP | Large
+data ImageSize = Thumb | Medium | Ogp | Large
   deriving (Show, Read, Eq, Generic, Enum, Bounded)
   deriving anyclass (FromJSON, ToJSON)
 
@@ -98,15 +99,13 @@ instance ToHttpApiData ImageSize where
   {-# INLINE toUrlPiece #-}
 
 instance FromHttpApiData ImageSize where
-  parseUrlPiece =
-    maybe
-      <$> (Left . ("Unknown size: " <>))
-      <*> pure Right
-      <*> flip
-        lookup
-        [ (T.toLower $ T.pack $ show sz, sz)
-        | sz <- [minBound .. maxBound]
-        ]
+  parseUrlPiece = \case
+    "ogp" -> pure Ogp
+    "large" -> pure Large
+    "medium" -> pure Medium
+    "thumb" -> pure Thumb
+    sz -> Left $ "Unknown size: " <> sz <> " (must be one of: ogp, large, medium, or thumb)"
+  {-# INLINE parseUrlPiece #-}
 
 data RestApi mode = RestApi
   { listArticles ::

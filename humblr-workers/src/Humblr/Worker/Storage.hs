@@ -72,13 +72,13 @@ import Network.Cloudflare.Worker.Response qualified as Resp
 import Servant.Auth.Cloudflare.Workers.Internal.JWT (CryptoKey, JWSAlg (HS256), toAlogirhtmIdentifier, verifySignature)
 import Servant.Cloudflare.Workers.Internal.Response (toWorkerResponse)
 import Servant.Cloudflare.Workers.Internal.ServerError (ServerError (..), err403, responseServerError)
-import Servant.Cloudflare.Workers.Prelude (ToHttpApiData (toUrlPiece))
+import Servant.Cloudflare.Workers.Prelude (ToHttpApiData (toUrlPiece), err404)
 import Wasm.Prelude.Linear qualified as PL
 
 type App = ServiceM StorageEnv '[]
 
 data StorageServiceFuns = StorageServiceFuns
-  { get :: GetParams -> App (Maybe WorkerResponse)
+  { get :: GetParams -> App WorkerResponse
   , put :: T.Text -> T.Text -> ReadableStream -> App T.Text
   , issueSignedURL :: SignParams -> App (Maybe T.Text)
   }
@@ -92,7 +92,7 @@ type StorageService = Service StorageFuns
 type StorageServiceClass = ServiceClass StorageServiceFields
 
 type StorageServiceFields =
-  '[ '("get", GetParams ~> Return (Maybe WorkerResponse))
+  '[ '("get", GetParams ~> Return WorkerResponse)
    , '("put", T.Text ~> T.Text ~> ReadableStream ~> Return T.Text)
    , '("issueSignedURL", SignParams ~> Return (Maybe T.Text))
    ]
@@ -106,7 +106,7 @@ type StorageEnv =
     '[ '("R2", R2Class), '("KV", KVClass)]
 
 data GetParams = GetParams
-  { name :: !T.Text
+  { paths :: ![T.Text]
   , expiry :: !POSIXTime
   , sign :: !T.Text
   }
@@ -114,12 +114,12 @@ data GetParams = GetParams
   deriving anyclass (ToJSON, FromJSON)
   deriving (IsServiceArg) via ViaJSON GetParams
 
-data SignParams = SignParams {name :: T.Text, duration :: !Word}
+data SignParams = SignParams {paths :: [T.Text], duration :: !Word}
   deriving (Show, Generic)
   deriving anyclass (ToJSON, FromJSON)
   deriving (IsServiceArg) via ViaJSON SignParams
 
-data SignPayload = SignPayload {name :: !T.Text, expiry :: !POSIXTime}
+data SignPayload = SignPayload {paths :: ![T.Text], expiry :: !POSIXTime}
   deriving (Show, Generic)
   deriving anyclass (ToJSON, FromJSON)
   deriving (IsServiceArg) via ViaJSON SignPayload
@@ -137,6 +137,7 @@ issueSignedURL SignParams {..} = do
   key <- getSignKey
   root <- getEnv "ROOT_URI"
   liftIO $ runMaybeT do
+    let name = T.intercalate "/" paths
     void $ MaybeT $ await' =<< R2.head r2 (TE.encodeUtf8 name)
     liftIO do
       now <- getPOSIXTime
@@ -154,7 +155,7 @@ issueSignedURL SignParams {..} = do
           signedUrl =
             T.dropWhileEnd (== '/') root
               <> "/"
-              <> toUrlPiece (rootApiLinks.resources (T.splitOn "/" name) expiry $ TE.decodeUtf8 sgnBS)
+              <> toUrlPiece (rootApiLinks.resources paths expiry $ TE.decodeUtf8 sgnBS)
       pure signedUrl
 
 getSignKey :: App CryptoKey
@@ -182,48 +183,50 @@ newtype Sign = Sign {runSign :: T.Text}
   deriving (Show, Eq, Ord, Generic)
   deriving newtype (IsServiceArg)
 
-get :: GetParams -> App (Maybe WorkerResponse)
+get :: GetParams -> App WorkerResponse
 get GetParams {..} = do
+  let joined = T.intercalate "/" paths
   r2 <- getBinding "R2"
   key <- getSignKey
-  liftIO $ runMaybeT do
-    now <- liftIO getPOSIXTime
-    let payload = A.encode SignPayload {..}
-        goodSign =
-          verifySignature
-            key
-            (B64U.decodeLenient $ TE.encodeUtf8 sign)
-            (LBS.toStrict payload)
-    if
-      | not goodSign -> do
-          liftIO $ toWorkerResponse $ responseServerError err403 {errBody = "Invalid Signature"}
-      | now >= expiry -> do
-          liftIO $ toWorkerResponse $ responseServerError err403 {errBody = "URL already expired"}
-      | otherwise -> do
-          objInfo <-
-            MaybeT $
-              await'
-                =<< (R2.head r2 (TE.encodeUtf8 name))
-          body <-
-            MaybeT $
-              mapM R2.getBody
-                =<< await'
-                =<< R2.get r2 (TE.encodeUtf8 name)
-          liftIO do
-            hdrs <- Resp.toHeaders mempty
-            R2.writeObjectHttpMetadata objInfo hdrs
-            ok <- fromHaskellByteString "Ok"
-            automatic <- fromHaskellByteString "automatic"
-            empty <- emptyObject
-            Resp.newResponse'
-              (Just $ inject body)
-              $ Just
-              $ newDictionary
-                PL.$ setPartialField "status" (toJSPrim 200)
-                PL.. setPartialField "headers" (inject hdrs)
-                PL.. setPartialField "statusText" ok
-                PL.. setPartialField "encodeBody" automatic
-                PL.. setPartialField "cf" empty
+  liftIO $
+    maybe (toWorkerResponse $ responseServerError err404 {errBody = "Not found: " <> TE.encodeUtf8 joined}) pure =<< runMaybeT do
+      now <- liftIO getPOSIXTime
+      let payload = A.encode SignPayload {..}
+          goodSign =
+            verifySignature
+              key
+              (B64U.decodeLenient $ TE.encodeUtf8 sign)
+              (LBS.toStrict payload)
+      if
+        | not goodSign -> do
+            liftIO $ toWorkerResponse $ responseServerError err403 {errBody = "Invalid Signature"}
+        | now >= expiry -> do
+            liftIO $ toWorkerResponse $ responseServerError err403 {errBody = "URL already expired"}
+        | otherwise -> do
+            objInfo <-
+              MaybeT $
+                await'
+                  =<< (R2.head r2 (TE.encodeUtf8 joined))
+            body <-
+              MaybeT $
+                mapM R2.getBody
+                  =<< await'
+                  =<< R2.get r2 (TE.encodeUtf8 joined)
+            liftIO do
+              hdrs <- Resp.toHeaders mempty
+              R2.writeObjectHttpMetadata objInfo hdrs
+              ok <- fromHaskellByteString "Ok"
+              automatic <- fromHaskellByteString "automatic"
+              empty <- emptyObject
+              Resp.newResponse'
+                (Just $ inject body)
+                $ Just
+                $ newDictionary
+                  PL.$ setPartialField "status" (toJSPrim 200)
+                  PL.. setPartialField "headers" (inject hdrs)
+                  PL.. setPartialField "statusText" ok
+                  PL.. setPartialField "encodeBody" automatic
+                  PL.. setPartialField "cf" empty
 
 put :: T.Text -> T.Text -> ReadableStream -> App T.Text
 put slug path body = do

@@ -25,10 +25,7 @@ import Data.Aeson qualified as A
 import Data.Aeson qualified as J
 import Data.Bifunctor qualified as Bi
 import Data.CaseInsensitive qualified as CI
-import Data.Maybe (fromMaybe)
-import Data.String (fromString)
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
 import Data.Time.Clock.POSIX (POSIXTime)
 import GHC.Wasm.Object.Builtins
 import GHC.Wasm.Web.ReadableStream (ReadableStream)
@@ -42,7 +39,6 @@ import Network.Cloudflare.Worker.Binding qualified as Raw
 import Network.Cloudflare.Worker.Binding.Assets (AssetsClass)
 import Network.Cloudflare.Worker.Binding.Assets qualified as RawAssets
 import Network.Cloudflare.Worker.Request qualified as Req
-import Network.URI
 import Servant.Auth.Cloudflare.Workers
 import Servant.Cloudflare.Workers.Assets (serveAssets)
 import Servant.Cloudflare.Workers.Cache (CacheOptions (..), serveCachedRaw)
@@ -100,25 +96,27 @@ workers :: RootAPI (AsWorker HumblrEnv)
 workers =
   RootAPI
     { frontend = frontend
-    , assets = serveCachedRaw assetCacheOptions $ serveAssets "ASSETS"
+    , assets = assetsFallback
     , apiRoutes = apiRoutes
     , images = fmap (serveCachedRaw assetCacheOptions) . serveImageSized
     , resources = resources
     }
 
+assetsFallback :: Worker HumblrEnv Raw
+assetsFallback = Tagged \_ _ _ ->
+  -- assets must be handled by assets, so if something reach here,
+  -- it must be 404
+  toWorkerResponse $ responseServerError err404
+
 serveImageSized :: ImageSize -> [T.Text] -> Worker HumblrEnv Raw
 serveImageSized sz paths = Tagged \_ env _ -> do
   let images = Raw.getBinding "IMAGES" env
-  maybe (toWorkerResponse $ responseServerError err404) pure
-    =<< await'
-    =<< images.get sz (T.intercalate "/" paths)
+  await' =<< images.get sz paths
 
 resources :: [T.Text] -> POSIXTime -> T.Text -> Worker HumblrEnv Raw
-resources paths expiry sign = Cache.serveCachedRaw assetCacheOptions $ Tagged \req env _ -> do
+resources paths expiry sign = Cache.serveCachedRaw assetCacheOptions $ Tagged \_ env _ -> do
   let storage = Raw.getBinding "Storage" env
-      name = T.intercalate "/" paths
-  resp <- await' =<< storage.get GetParams {..}
-  maybe (toWorkerResponse $ responseServerError err404 {errBody = "Not Found: " <> TE.encodeUtf8 (Req.getUrl req.rawRequest)}) pure resp
+  await' =<< storage.get GetParams {..}
 
 frontend :: FrontendRoutes (AsWorker HumblrEnv)
 frontend =
@@ -137,15 +135,17 @@ articlePage slug = Cache.serveCachedRaw assetCacheOptions $ Tagged \_ env _ -> d
   await . jsPromise =<< renderer.renderArticle slug
 
 serveIndex :: Worker HumblrEnv Raw
-serveIndex = Tagged \req env _ ->
-  if not $ null req.pathInfo
-    then toWorkerResponse $ responseServerError err404 {errBody = "Not Found"}
-    else do
-      let link = "/" <> toUrlPiece rootApiLinks.assets <> "/index.html"
-          rawUrl = Req.getUrl req.rawRequest
-          !url = fromString @USVString $ show $ (fromMaybe (error $ "Invalid Url: " <> show rawUrl) $ parseURI $ T.unpack rawUrl) {uriPath = T.unpack link}
-      resp <- await =<< RawAssets.fetch (Raw.getBinding "ASSETS" env) (inject url)
-      pure resp
+serveIndex = Cache.serveCachedRaw assetCacheOptions $ Tagged \_ env _ -> do
+  let root = fromSuccess $ J.fromJSON $ Raw.getEnv "ROOT_URI" env
+      link = "/" <> toUrlPiece rootApiLinks.assets <> "/index.html"
+      !url = fromText @USVStringClass $ root <> link
+  resp <- await =<< RawAssets.fetch (Raw.getBinding "ASSETS" env) (inject url)
+  pure resp
+
+fromSuccess :: J.Result a -> a
+{-# INLINE fromSuccess #-}
+fromSuccess (J.Success a) = a
+fromSuccess _ = error "Could not happen"
 
 protectIfConfigured ::
   AuthResult User ->
@@ -185,12 +185,11 @@ instance (HasWorker e api ctxs) => HasWorker e (Image :> api) ctxs where
               lookup "Content-Type" $
                 map (Bi.first CI.mk) . Req.getHeaders $
                   request.rawRequest
-        case (`lookup` [("image/png", Png), ("image/jpeg", Jpeg)]) =<< cty of
-          Just {} ->
-            case fromNullable $ Req.getBody request.rawRequest of
-              Just body -> pure body
-              Nothing -> delayedFail err400
-          Nothing -> delayedFail err415
+        if maybe False (\ty -> ty == "image/png" || ty == "image/jpeg") cty
+          then case fromNullable $ Req.getBody request.rawRequest of
+            Just body -> pure body
+            Nothing -> delayedFail err400
+          else delayedFail err415
 
 adminAPI :: AuthResult User -> AdminAPI (AsWorker HumblrEnv)
 adminAPI usr =

@@ -40,7 +40,7 @@ import Servant.Cloudflare.Workers.Internal.Response (toWorkerResponse)
 import Servant.Cloudflare.Workers.Internal.ServerError (responseServerError)
 
 data ImagesServiceFuns = ImagesServiceFuns
-  {get :: ImageSize -> T.Text -> App (Maybe WorkerResponse)}
+  {get :: ImageSize -> [T.Text] -> App WorkerResponse}
   deriving (Generic)
   deriving anyclass (ToService SSREnv)
 
@@ -109,7 +109,7 @@ toImageOption Large =
     , metadata = Just None
     , fit = Just ScaleDown
     }
-toImageOption OGP =
+toImageOption Ogp =
   ImageOption
     { width = Just 1200
     , height = Just 1200
@@ -117,17 +117,18 @@ toImageOption OGP =
     , fit = Just ScaleDown
     }
 
-get :: ImageSize -> T.Text -> App (Maybe WorkerResponse)
+get :: ImageSize -> [T.Text] -> App WorkerResponse
 get = withImageOptions . toImageOption
 
-withImageOptions :: ImageOption -> T.Text -> App (Maybe WorkerResponse)
-withImageOptions opts path
-  | T.null path = liftIO $ fmap Just $ toWorkerResponse $ responseServerError err404
+withImageOptions :: ImageOption -> [T.Text] -> App WorkerResponse
+withImageOptions opts paths
+  | null paths = liftIO $ toWorkerResponse $ responseServerError err404
   | otherwise = do
       storage <- getBinding "STORAGE"
-      liftIO $ runMaybeT do
-        url <- MaybeT $ await' =<< storage.issueSignedURL SignParams {duration = 60, name = path}
-        liftIO do
-          cf <- encodeJSON $ A.object ["cf" A..= A.object ["image" A..= opts]]
-          fmap unsafeCast . await
-            =<< fetch (inject $ fromText @USVStringClass url) (nonNull $ unsafeCast cf)
+      liftIO $
+        maybe (toWorkerResponse $ responseServerError err404) pure =<< runMaybeT do
+          url <- MaybeT $ await' =<< storage.issueSignedURL SignParams {duration = 60, ..}
+          liftIO do
+            cf <- encodeJSON $ A.object ["cf" A..= A.object ["image" A..= opts]]
+            fmap unsafeCast . await
+              =<< fetch (inject $ fromText @USVStringClass url) (nonNull $ unsafeCast cf)
