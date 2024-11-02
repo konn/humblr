@@ -31,6 +31,8 @@ module Humblr.Types (
   RootAPI (..),
   RestApi (..),
   AdminAPI (..),
+  ImagesAPI (..),
+  imageLink,
   ImageSize (..),
   FrontendRoutes (..),
   RequireUser,
@@ -78,10 +80,32 @@ data RootAPI mode = RootAPI
           :> QueryParam' '[Required] "expiry" POSIXTime
           :> QueryParam' '[Required] "sign" T.Text
           :> Raw
-  , images :: mode :- "images" :> Capture "size" ImageSize :> CaptureAll "path" T.Text :> Raw
+  , images :: mode :- "images" :> NamedRoutes ImagesAPI
+  -- ^
+  -- NOTE: If we include 'ImageSize' as a 'Capture'd argument,
+  -- resulting WASM binary exceeds 1000KiB...
   , frontend :: mode :- NamedRoutes FrontendRoutes
   }
   deriving (Generic)
+
+{- |
+NOTE: If we include 'ImageSize' as a 'Capture'd argument,
+resulting WASM binary exceeds 1000KiB...
+-}
+data ImagesAPI mode = ImagesAPI
+  { thumb :: mode :- "thumb" :> CaptureAll "path" T.Text :> Raw
+  , medium :: mode :- "ogp" :> CaptureAll "path" T.Text :> Raw
+  , large :: mode :- "large" :> CaptureAll "path" T.Text :> Raw
+  , ogp :: mode :- "ogp" :> CaptureAll "path" T.Text :> Raw
+  }
+  deriving (Generic)
+
+imageLink :: ImageSize -> [T.Text] -> Link
+imageLink sz = case sz of
+  Thumb -> rootApiLinks.images.thumb
+  Medium -> rootApiLinks.images.medium
+  Large -> rootApiLinks.images.large
+  Ogp -> rootApiLinks.images.ogp
 
 data ImageSize = Thumb | Medium | Ogp | Large
   deriving (Show, Read, Eq, Generic, Enum, Bounded)

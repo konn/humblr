@@ -99,7 +99,7 @@ renderArticle slug = do
               meta_ [property_ "og:title", content_ summary]
               meta_ [property_ "og:description", content_ summary]
               forM_ (listToMaybe art.attachments) \att ->
-                meta_ [property_ "og:image", content_ $ linkWithRoot root $ rootApiLinks.images Ogp $ T.splitOn "/" att.url]
+                meta_ [property_ "og:image", content_ $ linkWithRoot root $ imageLink Ogp $ T.splitOn "/" att.url]
 
               link_ [rel_ "stylesheet", type_ "text/css", href_ "https://cdn.jsdelivr.net/npm/bulma@1.0.0/css/bulma.min.css"]
               link_ [rel_ "stylesheet", type_ "text/css", href_ "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"]

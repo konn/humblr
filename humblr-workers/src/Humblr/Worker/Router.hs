@@ -40,7 +40,6 @@ import Network.Cloudflare.Worker.Binding.Assets (AssetsClass)
 import Network.Cloudflare.Worker.Binding.Assets qualified as RawAssets
 import Network.Cloudflare.Worker.Request qualified as Req
 import Servant.Auth.Cloudflare.Workers
-import Servant.Cloudflare.Workers.Assets (serveAssets)
 import Servant.Cloudflare.Workers.Cache (CacheOptions (..), serveCachedRaw)
 import Servant.Cloudflare.Workers.Cache qualified as Cache
 import Servant.Cloudflare.Workers.Generic (AsWorker, genericCompileWorkerContext)
@@ -98,8 +97,17 @@ workers =
     { frontend = frontend
     , assets = assetsFallback
     , apiRoutes = apiRoutes
-    , images = fmap (serveCachedRaw assetCacheOptions) . serveImageSized
+    , images = imagesRoutes
     , resources = resources
+    }
+
+imagesRoutes :: ImagesAPI (AsWorker HumblrEnv)
+imagesRoutes =
+  ImagesAPI
+    { thumb = serveCachedRaw assetCacheOptions . serveImageSized Thumb
+    , large = serveCachedRaw assetCacheOptions . serveImageSized Large
+    , ogp = serveCachedRaw assetCacheOptions . serveImageSized Ogp
+    , medium = serveCachedRaw assetCacheOptions . serveImageSized Medium
     }
 
 assetsFallback :: Worker HumblrEnv Raw

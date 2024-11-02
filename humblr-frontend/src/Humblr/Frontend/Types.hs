@@ -236,7 +236,7 @@ attachmentUrl sz = \case
   FixedImg url -> resouceUrl sz url
 
 resouceUrl :: ImageSize -> T.Text -> T.Text
-resouceUrl sz name = "/" <> toUrlPiece (rootApiLinks.images sz $ T.splitOn "/" name)
+resouceUrl sz name = "/" <> toUrlPiece (imageLink sz $ T.splitOn "/" name)
 
 data EditViewState = Edit | Preview
   deriving (Show, Eq, Generic)
