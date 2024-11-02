@@ -553,7 +553,9 @@ articlesList title as =
                             | page > 0
                             ]
                           , [ellipsis | fromIntegral page < fromIntegral @_ @Int totalPage - 2]
-                          , [li_ [] [a_ endAttr [fromString $ show totalPage]]]
+                          , [ li_ [] [a_ endAttr [fromString $ show totalPage]]
+                            | page < totalPage - 1
+                            ]
                           ]
                       | totalPage > 1
                       ]
