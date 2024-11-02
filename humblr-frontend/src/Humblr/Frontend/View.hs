@@ -547,12 +547,12 @@ articlesList title as =
                           [ [ ellipsis
                             | page > 1
                             ]
-                          ,
-                            [ li_
+                          , [ li_
                                 []
                                 [a_ [class_ "pagination-link is-current"] [fromString $ show (page + 1)]]
+                            | page > 0
                             ]
-                          , [ellipsis | page < totalPage - 2]
+                          , [ellipsis | fromIntegral page < fromIntegral @_ @Int totalPage - 2]
                           , [li_ [] [a_ endAttr [fromString $ show totalPage]]]
                           ]
                       | totalPage > 1
