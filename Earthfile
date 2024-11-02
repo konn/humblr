@@ -117,6 +117,7 @@ all:
 
   # Place frontend in the router assets
   BUILD  --platform=linux/amd64 +frontend
+  COPY humblr-workers/data/assets ./dist/router/assets
   COPY +frontend/dist/* ./dist/router/assets/assets/
   COPY +frontend/dist/assets.json ./dist/ssr/assets/
   SAVE ARTIFACT ./dist AS LOCAL _build
