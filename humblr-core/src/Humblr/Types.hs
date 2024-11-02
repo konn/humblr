@@ -160,7 +160,7 @@ type PutResource meth =
     :> Image
     :> Verb meth 200 '[PlainText] T.Text
 
-data User = User {email :: T.Text}
+data User = User {email :: Maybe T.Text}
   deriving (Show, Eq, Ord, Generic)
   deriving anyclass (FromJSON, ToJSON)
   deriving (IsServiceArg) via ViaJSON User
