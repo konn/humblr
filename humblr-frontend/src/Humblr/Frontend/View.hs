@@ -574,7 +574,7 @@ articleOverview arts art@Article {..} =
                                     [ img_
                                         [ src_ $ resouceUrl Medium img.url
                                         , alt_ img.name
-                                        , styleInline_ "max-width: 512;"
+                                        , styleInline_ "max-width: 512px;"
                                         ]
                                     ]
                                 ]
