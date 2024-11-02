@@ -76,7 +76,7 @@ defaultMainWith opts = do
     logInfo_ $ tshow (length inputs) <> "HTML(s) found under " <> T.pack (toFilePath inputDir)
     cap <- getNumCapabilities
     let numThs = maybe cap (\n -> if n <= 0 then cap else fromIntegral n) opts.numThreads
-    logInfo_ $ "Spawning " <> tshow (length inputs) <> " threads..."
+    logInfo_ $ "Spawning " <> tshow numThs <> " threads..."
     runReader config do
       workQueue <- atomically $ newTBMQueue 512
       faileds <- atomically TMap.new
@@ -266,13 +266,13 @@ processParsedArticle name pa = do
       body = pa.body
       slug = T.pack $ formatTime defaultTimeLocale "%Y%m%d-%H-%M" pa.date
       tags = pa.tags
-  base <- fromAbsFile . fst <$> splitExtension name
+  base <- fromRelFile . fst <$> splitExtension (filename name)
   endpoints <- askAdminAPI
   AppEnv {..} <- ask
+  logInfo_ $ "Globbing: " <> T.pack (base <> "*.jpg") <> " under" <> tshow (inputDir </> mediaDir)
   imgs <-
     fmap sort $
       globDirFiles1 (fromString $ base <> "*.jpg") (inputDir </> mediaDir)
-        <> globDirFiles1 (fromString $ base <> "_*.jpg") (inputDir </> mediaDir)
   logInfo_ "Uploading attachemnts..."
   attachments <- forM imgs \src -> localDomain (T.pack $ toFilePath src) do
     let imageName = T.pack $ fromRelFile $ filename src
