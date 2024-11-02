@@ -443,8 +443,8 @@ articleView mode art@Article {..} =
                 ( [ div_
                       [class_ "grid"]
                       [ div_
-                          [class_ "cell"]
-                          [ figure_ [class_ "image", styleInline_ "justify-content: center;"] [img_ [styleInline_ "max-width: 768px;", src_ $ resouceUrl Large img.url, alt_ img.name]]
+                          [class_ "cell", styleInline_ "justify-content: center;"]
+                          [ figure_ [class_ "image"] [img_ [styleInline_ "max-width: 1024px;", src_ $ resouceUrl Large img.url, alt_ img.name]]
                           ]
                       | img <- attachments
                       ]
@@ -568,12 +568,13 @@ articleOverview arts art@Article {..} =
                       [ [ div_
                             [class_ "grid"]
                             [ div_
-                                [class_ "cell"]
+                                [class_ "cell", styleInline_ "justify-content: center;"]
                                 [ figure_
                                     [class_ "image"]
                                     [ img_
                                         [ src_ $ resouceUrl Medium img.url
                                         , alt_ img.name
+                                        , styleInline_ "max-width: 768;"
                                         ]
                                     ]
                                 ]

@@ -29,6 +29,7 @@ import Data.Text qualified as T
 import GHC.Generics
 import GHC.Wasm.Object.Builtins
 import GHC.Wasm.Web.JSON (encodeJSON)
+import Humblr.Frontend.Types (ImageSize (..))
 import Humblr.Worker.Storage (SignParams (..), StorageServiceClass)
 import Network.Cloudflare.Worker.Binding (BindingsClass)
 import Network.Cloudflare.Worker.Binding.Service
@@ -39,7 +40,7 @@ import Servant.Cloudflare.Workers.Internal.Response (toWorkerResponse)
 import Servant.Cloudflare.Workers.Internal.ServerError (responseServerError)
 
 data ImagesServiceFuns = ImagesServiceFuns
-  {thumb, medium, large :: T.Text -> App (Maybe WorkerResponse)}
+  {get :: ImageSize -> T.Text -> App (Maybe WorkerResponse)}
   deriving (Generic)
   deriving anyclass (ToService SSREnv)
 
@@ -54,7 +55,7 @@ type ImagesServiceClass = ServiceClass SSRFuns
 type ImagesService = JSObject ImagesServiceClass
 
 handlers :: IO ImagesService
-handlers = toService @SSREnv ImagesServiceFuns {thumb, medium, large}
+handlers = toService @SSREnv ImagesServiceFuns {get}
 
 data Fit = ScaleDown | Contain | Cover | Crop | Pad
   deriving (Show, Eq, Ord, Generic)
@@ -86,35 +87,38 @@ data ImageOption = ImageOption {height, width :: !(Maybe Word), metadata :: !(Ma
 instance A.ToJSON ImageOption where
   toJSON = A.genericToJSON A.defaultOptions {A.omitNothingFields = True}
 
-large :: T.Text -> App (Maybe WorkerResponse)
-large =
-  withImageOptions
-    ImageOption
-      { width = Just 1024
-      , height = Nothing
-      , metadata = Just None
-      , fit = Just ScaleDown
-      }
+toImageOption :: ImageSize -> ImageOption
+toImageOption Thumb =
+  ImageOption
+    { width = Just 256
+    , height = Just 256
+    , metadata = Just None
+    , fit = Just ScaleDown
+    }
+toImageOption Medium =
+  ImageOption
+    { width = Just 512
+    , height = Nothing
+    , metadata = Just None
+    , fit = Just ScaleDown
+    }
+toImageOption Large =
+  ImageOption
+    { width = Just 1024
+    , height = Nothing
+    , metadata = Just None
+    , fit = Just ScaleDown
+    }
+toImageOption OGP =
+  ImageOption
+    { width = Just 1200
+    , height = Just 1200
+    , metadata = Just None
+    , fit = Just ScaleDown
+    }
 
-medium :: T.Text -> App (Maybe WorkerResponse)
-medium =
-  withImageOptions
-    ImageOption
-      { width = Just 512
-      , height = Nothing
-      , metadata = Just None
-      , fit = Just ScaleDown
-      }
-
-thumb :: T.Text -> App (Maybe WorkerResponse)
-thumb =
-  withImageOptions
-    ImageOption
-      { width = Just 256
-      , height = Just 256
-      , metadata = Just None
-      , fit = Just Contain
-      }
+get :: ImageSize -> T.Text -> App (Maybe WorkerResponse)
+get = withImageOptions . toImageOption
 
 withImageOptions :: ImageOption -> T.Text -> App (Maybe WorkerResponse)
 withImageOptions opts path

@@ -102,38 +102,16 @@ workers =
     { frontend = frontend
     , assets = serveCachedRaw assetCacheOptions $ serveAssets "ASSETS"
     , apiRoutes = apiRoutes
-    , images = imagesRoutes
+    , images = fmap (serveCachedRaw assetCacheOptions) . serveImageSized
     , resources = resources
     }
 
-imagesRoutes :: ImagesRoutes (AsWorker HumblrEnv)
-imagesRoutes =
-  ImagesRoutes
-    { thumb = serveCachedRaw assetCacheOptions thumbImage
-    , medium = serveCachedRaw assetCacheOptions mediumImage
-    , large = serveCachedRaw assetCacheOptions largeImage
-    }
-
-thumbImage :: Worker HumblrEnv Raw
-thumbImage = Tagged \req env _ -> do
+serveImageSized :: ImageSize -> [T.Text] -> Worker HumblrEnv Raw
+serveImageSized sz paths = Tagged \_ env _ -> do
   let images = Raw.getBinding "IMAGES" env
   maybe (toWorkerResponse $ responseServerError err404) pure
     =<< await'
-    =<< images.thumb (T.intercalate "/" req.pathInfo)
-
-mediumImage :: Worker HumblrEnv Raw
-mediumImage = Tagged \req env _ -> do
-  let images = Raw.getBinding "IMAGES" env
-  maybe (toWorkerResponse $ responseServerError err404) pure
-    =<< await'
-    =<< images.medium (T.intercalate "/" req.pathInfo)
-
-largeImage :: Worker HumblrEnv Raw
-largeImage = Tagged \req env _ -> do
-  let images = Raw.getBinding "IMAGES" env
-  maybe (toWorkerResponse $ responseServerError err404) pure
-    =<< await'
-    =<< images.large (T.intercalate "/" req.pathInfo)
+    =<< images.get sz (T.intercalate "/" paths)
 
 resources :: [T.Text] -> POSIXTime -> T.Text -> Worker HumblrEnv Raw
 resources paths expiry sign = Cache.serveCachedRaw assetCacheOptions $ Tagged \req env _ -> do

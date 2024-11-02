@@ -30,7 +30,7 @@ module Humblr.Types (
   RootAPI (..),
   RestApi (..),
   AdminAPI (..),
-  ImagesRoutes (..),
+  ImageSize (..),
   FrontendRoutes (..),
   RequireUser,
 ) where
@@ -74,17 +74,30 @@ data RootAPI mode = RootAPI
           :> QueryParam' '[Required] "expiry" POSIXTime
           :> QueryParam' '[Required] "sign" T.Text
           :> Raw
-  , images :: mode :- "images" :> NamedRoutes ImagesRoutes
+  , images :: mode :- "images" :> Capture "size" ImageSize :> CaptureAll "path" T.Text :> Raw
   , frontend :: mode :- NamedRoutes FrontendRoutes
   }
   deriving (Generic)
 
-data ImagesRoutes mode = ImagesRoutes
-  { thumb :: mode :- "thumb" :> Raw
-  , medium :: mode :- "medium" :> Raw
-  , large :: mode :- "large" :> Raw
-  }
-  deriving (Generic)
+data ImageSize = Thumb | Medium | OGP | Large
+  deriving (Show, Eq, Generic, Enum, Bounded)
+  deriving anyclass (FromJSON, ToJSON)
+  deriving (IsServiceArg) via ViaJSON ImageSize
+
+instance ToHttpApiData ImageSize where
+  toUrlPiece = T.toLower . T.pack . show
+  {-# INLINE toUrlPiece #-}
+
+instance FromHttpApiData ImageSize where
+  parseUrlPiece =
+    maybe
+      <$> (Left . ("Unknown size: " <>))
+      <*> pure Right
+      <*> flip
+        lookup
+        [ (T.toLower $ T.pack $ show sz, sz)
+        | sz <- [minBound .. maxBound]
+        ]
 
 data RestApi mode = RestApi
   { listArticles ::

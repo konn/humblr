@@ -230,21 +230,13 @@ data ImageUrl
   | FixedImg !MisoString
   deriving (Show, Eq, Generic)
 
-data ImageSize = Thumb | Medium | Large
-  deriving (Show, Eq, Generic)
-
 attachmentUrl :: ImageSize -> ImageUrl -> MisoString
 attachmentUrl sz = \case
   TempImg url -> url
   FixedImg url -> resouceUrl sz url
 
 resouceUrl :: ImageSize -> T.Text -> T.Text
-resouceUrl sz name = "/" <> toUrlPiece loc <> "/" <> name
-  where
-    loc = case sz of
-      Large -> rootApiLinks.images.large
-      Medium -> rootApiLinks.images.medium
-      Thumb -> rootApiLinks.images.thumb
+resouceUrl sz name = "/" <> toUrlPiece (rootApiLinks.images sz $ T.splitOn "/" name)
 
 data EditViewState = Edit | Preview
   deriving (Show, Eq, Generic)
