@@ -159,7 +159,7 @@ issueSignedURL SignParams {..} = do
       pure signedUrl
 
 align15Mins :: POSIXTime -> POSIXTime
-align15Mins = fromIntegral . ceiling @_ @Int . (/ (15 * 60))
+align15Mins = fromIntegral . (* (15 * 60)) . ceiling @_ @Int . (/ (15 * 60))
 
 getSignKey :: App CryptoKey
 getSignKey = do
