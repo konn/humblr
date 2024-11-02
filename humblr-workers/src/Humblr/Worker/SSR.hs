@@ -91,7 +91,7 @@ renderArticle slug = do
 
         body = renderBS do
           doctype_
-          html_ [data_ "theme" "dark"] do
+          html_ [data_ "theme" "dark", L.Attribute "prefix" "og: http://ogp.me/ns#"] do
             head_ do
               meta_ [charset_ "utf-8"]
               meta_ [httpEquiv_ "Content-Type", content_ "text/html; charset=utf-8"]
@@ -104,8 +104,7 @@ renderArticle slug = do
               link_ [rel_ "stylesheet", type_ "text/css", href_ "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"]
               script_ mempty `with` [src_ script, type_ "module", async_ "", defer_ ""]
 
-              meta_ [property_ "twitter:card", name_ "twitter:card", content_ "summary_large_image"]
-              meta_ [property_ "twitter:site", name_ "twitter:site", content_ "@mr_konn"]
+              meta_ [name_ "twitter:card", content_ "summary_large_image"]
 
               meta_ [property_ "og:type", content_ "website"]
               meta_ [property_ "og:url", content_ $ linkWithRoot root $ rootApiLinks.frontend.articlePage slug]
