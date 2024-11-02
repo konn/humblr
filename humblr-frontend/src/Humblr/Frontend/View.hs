@@ -571,7 +571,7 @@ articleOverview arts art@Article {..} =
             [ div_
                 [class_ "media-content"]
                 [ div_
-                    [class_ "content is-size-3"]
+                    [class_ "content is-size-4"]
                     $ mconcat
                       [ [ div_
                             [class_ "grid"]

@@ -63,10 +63,18 @@ type HumblrEnv =
      , '("IMAGES", ImagesServiceClass)
      ]
 
-assetCacheOptions :: CacheOptions
-assetCacheOptions =
+imageCacheOptions :: CacheOptions
+imageCacheOptions =
   CacheOptions
-    { cacheTTL = 3600 * 8
+    { cacheTTL = 14 * 24 * 3600
+    , onlyOk = True
+    , includeQuery = False
+    }
+
+articleCacheOptions :: CacheOptions
+articleCacheOptions =
+  CacheOptions
+    { cacheTTL = 7 * 24 * 3600
     , onlyOk = True
     , includeQuery = False
     }
@@ -104,10 +112,10 @@ workers =
 imagesRoutes :: ImagesAPI (AsWorker HumblrEnv)
 imagesRoutes =
   ImagesAPI
-    { thumb = serveCachedRaw assetCacheOptions . serveImageSized Thumb
-    , large = serveCachedRaw assetCacheOptions . serveImageSized Large
-    , ogp = serveCachedRaw assetCacheOptions . serveImageSized Ogp
-    , medium = serveCachedRaw assetCacheOptions . serveImageSized Medium
+    { thumb = serveCachedRaw imageCacheOptions . serveImageSized Thumb
+    , large = serveCachedRaw imageCacheOptions . serveImageSized Large
+    , ogp = serveCachedRaw imageCacheOptions . serveImageSized Ogp
+    , medium = serveCachedRaw imageCacheOptions . serveImageSized Medium
     }
 
 assetsFallback :: Worker HumblrEnv Raw
@@ -122,7 +130,7 @@ serveImageSized sz paths = Tagged \_ env _ -> do
   await' =<< images.get sz paths
 
 resources :: [T.Text] -> POSIXTime -> T.Text -> Worker HumblrEnv Raw
-resources paths expiry sign = Cache.serveCachedRaw assetCacheOptions $ Tagged \_ env _ -> do
+resources paths expiry sign = Cache.serveCachedRaw imageCacheOptions $ Tagged \_ env _ -> do
   let storage = Raw.getBinding "Storage" env
   await' =<< storage.get GetParams {..}
 
@@ -138,7 +146,7 @@ frontend =
     }
 
 articlePage :: T.Text -> Worker HumblrEnv Raw
-articlePage slug = Cache.serveCachedRaw assetCacheOptions $ Tagged \_ env _ -> do
+articlePage slug = Cache.serveCachedRaw articleCacheOptions $ Tagged \_ env _ -> do
   let renderer = Raw.getBinding "SSR" env
   await . jsPromise =<< renderer.renderArticle slug
 
