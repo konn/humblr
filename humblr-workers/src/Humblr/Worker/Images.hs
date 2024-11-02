@@ -24,13 +24,16 @@ module Humblr.Worker.Images (ImagesServiceClass, JSObject (..), handlers, Images
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Maybe
 import Data.Aeson qualified as A
+import Data.ByteString.Lazy.Char8 qualified as LBS8
 import Data.Char qualified as C
+import Data.String (fromString)
 import Data.Text qualified as T
 import GHC.Generics
 import GHC.Wasm.Object.Builtins
 import GHC.Wasm.Web.JSON (encodeJSON)
 import Humblr.Frontend.Types (ImageSize (..))
 import Humblr.Worker.Storage (SignParams (..), StorageServiceClass)
+import Humblr.Worker.Utils
 import Network.Cloudflare.Worker.Binding (BindingsClass)
 import Network.Cloudflare.Worker.Binding.Service
 import Network.Cloudflare.Worker.FetchAPI (fetch)
@@ -127,8 +130,12 @@ withImageOptions opts paths
       storage <- getBinding "STORAGE"
       liftIO $
         maybe (toWorkerResponse $ responseServerError err404) pure =<< runMaybeT do
+          liftIO $ consoleLog $ fromString $ "Issueing URL for " <> show opts <> "..."
           url <- MaybeT $ await' =<< storage.issueSignedURL SignParams {duration = 60, ..}
+          liftIO $ consoleLog $ fromText $ "URL attained: " <> url
+          let cfObj = A.object ["cf" A..= A.object ["image" A..= opts]]
+          liftIO $ consoleLog $ fromString $ LBS8.unpack $ A.encode cfObj
           liftIO do
-            cf <- encodeJSON $ A.object ["cf" A..= A.object ["image" A..= opts]]
+            cf <- encodeJSON cfObj
             fmap unsafeCast . await
               =<< fetch (inject $ fromText @USVStringClass url) (nonNull $ unsafeCast cf)

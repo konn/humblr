@@ -84,6 +84,7 @@ library
     Humblr.Worker.Router
     Humblr.Worker.SSR
     Humblr.Worker.Storage
+    Humblr.Worker.Utils
 
   -- cabal-gild: discover src --include=src/**/Internal.hs --include=src/**/Internal/**/*.hs
   other-modules:

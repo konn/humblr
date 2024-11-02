@@ -43,6 +43,7 @@ module Humblr.Frontend.Actions (
   articleAction,
   articlesT,
   BlobURLs (..),
+  generateOGP,
 ) where
 
 import Control.Arrow ((&&&))
@@ -54,16 +55,19 @@ import Data.Foldable qualified as F
 import Data.Functor (void)
 import Data.Generics.Labels ()
 import Data.Map.Ordered.Strict qualified as OM
-import Data.Maybe (catMaybes, fromMaybe)
+import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
 import Data.Proxy (Proxy (..))
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
+import Data.String (fromString)
 import Data.Text qualified as T
 import Data.Time (defaultTimeLocale, getCurrentTime)
 import Data.Time.Format (formatTime)
 import Data.Vector qualified as V
 import GHC.Base (Proxy#, proxy#)
 import GHC.Generics (Generic)
+import GHC.Wasm.Object.Builtins hiding (fromJSVal)
+import GHC.Wasm.Web.Generated.Response (ResponseClass)
 import Humblr.CMark (getSummary)
 import Humblr.CMark qualified as CM
 import Humblr.Frontend.Types
@@ -141,12 +145,14 @@ updateModel AddEditingTag m
 updateModel SaveEditingArticle m =
   m {mode = Idle}
     `batchEff` [ do
+                  upd <- toArticleUpdate original.slug edition
                   eith <-
                     tryAny $
-                      callApi
-                        . (api.adminAPI (CloudflareToken Nothing)).putArticle
+                      callApi $
+                        (api.adminAPI (CloudflareToken Nothing)).putArticle
                           original.slug
-                        =<< toArticleUpdate original.slug edition
+                          upd
+
                   case eith of
                     Left err ->
                       pure $
@@ -156,17 +162,20 @@ updateModel SaveEditingArticle m =
                             , message = toMisoString $ displayException err
                             }
                           (Just m.mode)
-                    Right NoContent -> pure $ openArticle original.slug
+                    Right NoContent -> do
+                      void $ tryAny $ generateOGP upd.attachments
+                      pure $ openArticle original.slug
                | EditedArticle {..} <- m ^.. #mode . #_EditingArticle
                ]
 updateModel CreateNewArticle m =
   m {mode = Idle}
     `batchEff` [ do
+                  seed <- toArticleSeed slug fragment
                   eith <-
                     tryAny $
-                      callApi
-                        . (api.adminAPI (CloudflareToken Nothing)).postArticle
-                        =<< toArticleSeed slug fragment
+                      callApi $
+                        (api.adminAPI (CloudflareToken Nothing)).postArticle
+                          seed
                   case eith of
                     Left err ->
                       pure $
@@ -176,7 +185,9 @@ updateModel CreateNewArticle m =
                             , message = toMisoString $ displayException err
                             }
                           (Just m.mode)
-                    Right NoContent -> pure $ openArticle slug
+                    Right NoContent -> do
+                      void $ tryAny $ generateOGP seed.attachments
+                      pure $ openArticle slug
                | MkNewArticle {..} <- m ^.. #mode . #_CreatingArticle
                ]
 updateModel (SetNewTagName f) m =
@@ -362,6 +373,13 @@ openNewArticle = openEndpoint rootApiURIs.frontend.newArticle
 openEndpoint :: URI -> Action
 openEndpoint = ChangeUrl
 
+generateOGP :: [Attachment] -> JSM ()
+generateOGP atts = do
+  uri <- getCurrentURI
+  forM_ (listToMaybe atts) \att -> do
+    liftIO $ await =<< js_fetch (fromString $ show $ (rootApiURIs.images.ogp $ T.splitOn "/" att.url) {uriAuthority = uri.uriAuthority, uriScheme = uri.uriScheme})
+  pure ()
+
 data SlugMode a
   = FixedSlug (ReifiedGetter a MisoString)
   | DynamicSlug (ReifiedLens' a MisoString)
@@ -496,3 +514,8 @@ blobURLsT =
   failing
     (#_EditingArticle . blobURLsL)
     (#_CreatingArticle . blobURLsL)
+
+foreign import javascript safe "fetch($1)"
+  js_fetch ::
+    USVString ->
+    IO (Promise ResponseClass)
