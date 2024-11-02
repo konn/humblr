@@ -517,12 +517,9 @@ articlesList title as =
       , p_
           [class_ "content"]
           [ div_
-              [class_ "fixed-grid has-1-cols-mobile has-3-cols-tablet has-4-cols-desktop has-4-cols-widescreen has-4-cols-fullhd"]
-              [ div_
-                  [class_ "grid is-col-min-32"]
-                  $ map (div_ [class_ "cell"] . pure . articleOverview arts)
-                  $ toList payload
-              ]
+              [class_ "grid is-col-min-10"]
+              $ map (div_ [class_ "cell"] . pure . articleOverview arts)
+              $ toList payload
           ]
       , let backAttr =
               class_ (MS.unwords $ "pagination-previous" : ["is-disabled" | page <= 0])
