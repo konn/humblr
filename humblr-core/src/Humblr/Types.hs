@@ -173,10 +173,9 @@ instance ToJWT User where
 
 instance FromJWT User where
   decodeJWT claims =
-    fmap User . eitherResult . J.fromJSON
-      =<< maybe
-        (Left $ "Missing 'email' claim")
-        Right
+    User
+      <$> mapM
+        (eitherResult . J.fromJSON)
         (Map.lookup "email" claims.unregisteredClaims)
   {-# INLINE decodeJWT #-}
 
