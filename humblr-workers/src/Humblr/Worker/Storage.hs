@@ -141,7 +141,7 @@ issueSignedURL SignParams {..} = do
     void $ MaybeT $ await' =<< R2.head r2 (TE.encodeUtf8 name)
     liftIO do
       now <- getPOSIXTime
-      let expiry = fromIntegral $ ceiling @_ @Int $ now + fromIntegral duration
+      let expiry = align15Mins $ now + fromIntegral duration
       let payload = A.encode $ SignPayload {..}
       sgn <- useByteStringAsJSByteArray @Word8 (LBS.toStrict payload) \bs ->
         fmap (toByteString @Word8) . fromArrayBuffer . unsafeCast
@@ -157,6 +157,9 @@ issueSignedURL SignParams {..} = do
               <> "/"
               <> toUrlPiece (rootApiLinks.resources paths expiry $ TE.decodeUtf8 sgnBS)
       pure signedUrl
+
+align15Mins :: POSIXTime -> POSIXTime
+align15Mins = fromIntegral . ceiling @_ @Int . (/ (15 * 60))
 
 getSignKey :: App CryptoKey
 getSignKey = do
