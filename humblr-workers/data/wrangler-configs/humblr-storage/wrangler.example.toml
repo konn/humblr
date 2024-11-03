@@ -1,0 +1,19 @@
+name = "humblr-storage"
+main = "src/worker.js"
+compatibility_date = "2024-10-22"
+compatibility_flags = ["nodejs_compat"]
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "humblr"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[[kv_namespaces]]
+binding = "KV"
+id = "<KV ID TO STORE JWT URL_SIGN_KEY>"
+
+[vars]
+ROOT_URI = "https://<YOUR_ROOT_DOMAIN_HERE>"

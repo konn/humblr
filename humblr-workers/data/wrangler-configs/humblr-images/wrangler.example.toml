@@ -1,0 +1,15 @@
+name = "humblr-images"
+main = "src/worker.js"
+compatibility_date = "2024-10-22"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ROOT_URI = "https://<YOUR_ROOT_DOMAIN_HERE>"
+
+[[services]]
+binding = "STORAGE"
+service = "humblr-storage"
+
+[observability]
+enabled = true
+head_sampling_rate = 1

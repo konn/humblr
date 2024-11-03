@@ -314,3 +314,4 @@ dist
 .pnp.*
 .wrangler
 .dev.vars
+wrangler.toml

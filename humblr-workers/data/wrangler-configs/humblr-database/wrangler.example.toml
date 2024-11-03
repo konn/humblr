@@ -1,0 +1,13 @@
+name = "humblr-db"
+main = "src/worker.js"
+compatibility_date = "2024-10-22"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "D1"
+database_name = "humblr"
+database_id = "<YOUR Database ID Here>"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
