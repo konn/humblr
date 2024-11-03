@@ -3,7 +3,10 @@
   "tasks": [
     {
       "type": "shell",
-      "group": "build",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
       "command": "earthly +all && ./scripts/migrate-local-frontend.sh",
       "label": "earthly: build",
       "detail": "$ earthly +all"
