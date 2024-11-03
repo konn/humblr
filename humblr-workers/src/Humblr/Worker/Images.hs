@@ -137,5 +137,4 @@ withImageOptions opts paths
           liftIO $ consoleLog $ fromString $ LBS8.unpack $ A.encode cfObj
           liftIO do
             cf <- encodeJSON cfObj
-            fmap unsafeCast . await
-              =<< fetch (inject $ fromText @USVStringClass url) (nonNull $ unsafeCast cf)
+            unsafeCast <$> fetch (inject $ fromText @USVStringClass url) (nonNull $ unsafeCast cf)
