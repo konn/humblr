@@ -416,7 +416,8 @@ generateOGP :: [Attachment] -> JSM ()
 generateOGP atts = do
   uri <- getCurrentURI
   forM_ (listToMaybe atts) \att -> do
-    liftIO $ await =<< js_fetch (fromString $ show $ (rootApiURIs.images.ogp $ T.splitOn "/" att.url) {uriAuthority = uri.uriAuthority, uriScheme = uri.uriScheme})
+    forM_ [rootApiURIs.images.ogp, rootApiURIs.images.twitter] \ep -> do
+      liftIO $ await =<< js_fetch (fromString $ show $ (ep $ T.splitOn "/" att.url) {uriAuthority = uri.uriAuthority, uriScheme = uri.uriScheme})
   pure ()
 
 data SlugMode a

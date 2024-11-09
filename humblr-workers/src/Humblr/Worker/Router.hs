@@ -116,6 +116,7 @@ imagesRoutes =
     , large = serveCachedRaw imageCacheOptions . serveImageSized Large
     , ogp = serveCachedRaw imageCacheOptions . serveImageSized Ogp
     , medium = serveCachedRaw imageCacheOptions . serveImageSized Medium
+    , twitter = serveCachedRaw imageCacheOptions . serveImageSized Twitter
     }
 
 assetsFallback :: Worker HumblrEnv Raw

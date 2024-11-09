@@ -119,6 +119,13 @@ toImageOption Ogp =
     , metadata = Just None
     , fit = Just Cover
     }
+toImageOption Twitter =
+  ImageOption
+    { width = Just 1200
+    , height = Just 628
+    , metadata = Just None
+    , fit = Just Cover
+    }
 
 get :: ImageSize -> [T.Text] -> App WorkerResponse
 get = withImageOptions . toImageOption

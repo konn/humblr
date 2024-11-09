@@ -97,6 +97,7 @@ data ImagesAPI mode = ImagesAPI
   , medium :: mode :- "medium" :> CaptureAll "path" T.Text :> Raw
   , large :: mode :- "large" :> CaptureAll "path" T.Text :> Raw
   , ogp :: mode :- "ogp" :> CaptureAll "path" T.Text :> Raw
+  , twitter :: mode :- "twitter" :> CaptureAll "path" T.Text :> Raw
   }
   deriving (Generic)
 
@@ -106,8 +107,9 @@ imageLink sz = case sz of
   Medium -> rootApiLinks.images.medium
   Large -> rootApiLinks.images.large
   Ogp -> rootApiLinks.images.ogp
+  Twitter -> rootApiLinks.images.twitter
 
-data ImageSize = Thumb | Medium | Ogp | Large
+data ImageSize = Thumb | Medium | Ogp | Large | Twitter
   deriving (Show, Read, Eq, Generic, Enum, Bounded)
   deriving anyclass (FromJSON, ToJSON)
 
@@ -125,6 +127,7 @@ instance ToHttpApiData ImageSize where
 instance FromHttpApiData ImageSize where
   parseUrlPiece = \case
     "ogp" -> pure Ogp
+    "twitter" -> pure Twitter
     "large" -> pure Large
     "medium" -> pure Medium
     "thumb" -> pure Thumb
