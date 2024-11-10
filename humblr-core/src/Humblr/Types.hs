@@ -82,6 +82,11 @@ type data ImagePng
 instance Accept ImagePng where
   contentType _ = "image" M.// "png"
 
+type data Html
+
+instance Accept Html where
+  contentType _ = "text" M.// "html" M./: ("charset", "utf-8")
+
 data RootAPI mode = RootAPI
   { apiRoutes :: mode :- "api" :> NamedRoutes RestApi
   , assets :: mode :- "assets" :> Raw
@@ -243,12 +248,12 @@ data ArticleUpdate = ArticleUpdate {body :: T.Text, tags :: [T.Text], attachment
 -- Currently, miso doesn't support adding unsupported middleware to Route,
 -- so we must make sure the endpoint is guarded behind ZeroTrust.
 data FrontendRoutes mode = FrontendRoutes
-  { articlePage :: mode :- "articles" :> Capture "slug" T.Text :> Raw
-  , tagArticles :: mode :- "tags" :> Capture "tag" T.Text :> QueryParam "page" Word :> Raw
-  , editArticle :: mode :- "admin" :> "edit" :> Capture "slug" T.Text :> Raw
-  , newArticle :: mode :- "admin" :> "new" :> Raw
-  , adminHome :: mode :- "admin" :> QueryParam "page" Word :> Raw
-  , topPage :: mode :- QueryParam "page" Word :> Raw
+  { articlePage :: mode :- "articles" :> Capture "slug" T.Text :> Get '[Html] WorkerResponse
+  , tagArticles :: mode :- "tags" :> Capture "tag" T.Text :> QueryParam "page" Word :> Get '[Html] WorkerResponse
+  , editArticle :: mode :- "admin" :> "edit" :> Capture "slug" T.Text :> Get '[Html] WorkerResponse
+  , newArticle :: mode :- "admin" :> "new" :> Get '[Html] WorkerResponse
+  , adminHome :: mode :- "admin" :> QueryParam "page" Word :> Get '[Html] WorkerResponse
+  , topPage :: mode :- QueryParam "page" Word :> Get '[Html] WorkerResponse
   }
   deriving (Generic)
 

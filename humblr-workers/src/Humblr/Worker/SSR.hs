@@ -133,7 +133,6 @@ renderArticle slug = do
         , statusText = "Ok"
         , headers =
             [ ("Last-Modified", BS8.pack $ formatTime defaultTimeLocale rfc822DateFormat $ art.updatedAt)
-            , ("Content-Type", "text/html; charset=utf-8")
             ]
         }
 

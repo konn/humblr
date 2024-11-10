@@ -35,7 +35,7 @@ import Humblr.Worker.Images (ImagesServiceClass)
 import Humblr.Worker.SSR (SSRServiceClass)
 import Humblr.Worker.Storage (GetParams (..), StorageServiceClass)
 import Humblr.Worker.Utils (consoleLog)
-import Network.Cloudflare.Worker.Binding hiding (getBinding, getSecret)
+import Network.Cloudflare.Worker.Binding hiding (getBinding, getEnv, getSecret)
 import Network.Cloudflare.Worker.Binding qualified as Raw
 import Network.Cloudflare.Worker.Binding.Assets (AssetsClass)
 import Network.Cloudflare.Worker.Binding.Assets qualified as RawAssets
@@ -153,18 +153,19 @@ frontend =
     , adminHome = const serveIndex
     }
 
-articlePage :: T.Text -> Worker HumblrEnv Raw
-articlePage slug = Cache.serveCachedRaw articleCacheOptions $ Tagged \_ env _ -> do
-  let renderer = Raw.getBinding "SSR" env
-  await . jsPromise =<< renderer.renderArticle slug
+articlePage :: T.Text -> App WorkerResponse
+articlePage slug = do
+  Cache.serveCached articleCacheOptions
+  renderer <- getBinding "SSR"
+  liftIO $ await . jsPromise =<< renderer.renderArticle slug
 
-serveIndex :: Worker HumblrEnv Raw
-serveIndex = Tagged \_ env _ -> do
-  let root = fromSuccess $ J.fromJSON $ Raw.getEnv "ROOT_URI" env
-      link = "/" <> toUrlPiece rootApiLinks.assets <> "/index.html"
+serveIndex :: App WorkerResponse
+serveIndex = do
+  root <- fromSuccess . J.fromJSON <$> getEnv "ROOT_URI"
+  assets <- getBinding "ASSETS"
+  let link = "/" <> toUrlPiece rootApiLinks.assets <> "/index.html"
       !url = fromText @USVStringClass $ root <> link
-  resp <- await =<< RawAssets.fetch (Raw.getBinding "ASSETS" env) (inject url)
-  pure resp
+  liftIO $ await =<< RawAssets.fetch assets (inject url)
 
 fromSuccess :: J.Result a -> a
 {-# INLINE fromSuccess #-}
