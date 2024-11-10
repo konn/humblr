@@ -66,6 +66,7 @@ library
     servant-auth-lite-client,
     servant-client-core,
     servant-client-fetch,
+    servant-cloudflare-workers-core,
     streaming-bytestring,
     text,
     time,

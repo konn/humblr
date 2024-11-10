@@ -96,6 +96,7 @@ import Language.Javascript.JSaddle hiding (Nullable)
 import Miso
 import Miso.String (MisoString)
 import Servant.API
+import Servant.API.Cloudflare ()
 import Servant.Auth.Client (Token (..))
 import Servant.Client.Core
 import Servant.Client.FetchAPI

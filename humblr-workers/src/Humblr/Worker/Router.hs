@@ -34,13 +34,15 @@ import Humblr.Worker.Database (DatabaseServiceClass)
 import Humblr.Worker.Images (ImagesServiceClass)
 import Humblr.Worker.SSR (SSRServiceClass)
 import Humblr.Worker.Storage (GetParams (..), StorageServiceClass)
+import Humblr.Worker.Utils (consoleLog)
 import Network.Cloudflare.Worker.Binding hiding (getBinding, getSecret)
 import Network.Cloudflare.Worker.Binding qualified as Raw
 import Network.Cloudflare.Worker.Binding.Assets (AssetsClass)
 import Network.Cloudflare.Worker.Binding.Assets qualified as RawAssets
 import Network.Cloudflare.Worker.Request qualified as Req
+import Network.Cloudflare.Worker.Response (WorkerResponse)
 import Servant.Auth.Cloudflare.Workers
-import Servant.Cloudflare.Workers.Cache (CacheOptions (..), serveCachedRaw)
+import Servant.Cloudflare.Workers.Cache (CacheOptions (..), serveCached)
 import Servant.Cloudflare.Workers.Cache qualified as Cache
 import Servant.Cloudflare.Workers.Generic (AsWorker, genericCompileWorkerContext)
 import Servant.Cloudflare.Workers.Internal.Delayed (addBodyCheck)
@@ -112,11 +114,11 @@ workers =
 imagesRoutes :: ImagesAPI (AsWorker HumblrEnv)
 imagesRoutes =
   ImagesAPI
-    { thumb = serveCachedRaw imageCacheOptions . serveImageSized Thumb
-    , large = serveCachedRaw imageCacheOptions . serveImageSized Large
-    , ogp = serveCachedRaw imageCacheOptions . serveImageSized Ogp
-    , medium = serveCachedRaw imageCacheOptions . serveImageSized Medium
-    , twitter = serveCachedRaw imageCacheOptions . serveImageSized Twitter
+    { thumb = serveImageSized Thumb
+    , large = serveImageSized Large
+    , ogp = serveImageSized Ogp
+    , medium = serveImageSized Medium
+    , twitter = serveImageSized Twitter
     }
 
 assetsFallback :: Worker HumblrEnv Raw
@@ -125,15 +127,20 @@ assetsFallback = Tagged \_ _ _ ->
   -- it must be 404
   toWorkerResponse $ responseServerError err404
 
-serveImageSized :: ImageSize -> [T.Text] -> Worker HumblrEnv Raw
-serveImageSized sz paths = Tagged \_ env _ -> do
-  let images = Raw.getBinding "IMAGES" env
-  await' =<< images.get sz paths
+serveImageSized :: ImageSize -> [T.Text] -> App WorkerResponse
+serveImageSized sz paths = do
+  serveCached imageCacheOptions
+  images <- getBinding "IMAGES"
+  liftIO $ await' =<< images.get sz paths
 
-resources :: [T.Text] -> POSIXTime -> T.Text -> Worker HumblrEnv Raw
-resources paths expiry sign = Cache.serveCachedRaw imageCacheOptions $ Tagged \_ env _ -> do
-  let storage = Raw.getBinding "Storage" env
-  await' =<< storage.get GetParams {..}
+resources :: [T.Text] -> POSIXTime -> T.Text -> App WorkerResponse
+resources paths expiry sign = do
+  storage <- getBinding "Storage"
+  Cache.serveCached imageCacheOptions
+  liftIO $ consoleLog "Making request..."
+  resp <- liftIO $ await' =<< storage.get GetParams {..}
+  liftIO $ consoleLog "Response got!"
+  pure resp
 
 frontend :: FrontendRoutes (AsWorker HumblrEnv)
 frontend =

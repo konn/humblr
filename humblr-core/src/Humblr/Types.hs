@@ -8,6 +8,7 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeData #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE NoFieldSelectors #-}
@@ -54,6 +55,7 @@ import GHC.Wasm.Object.Builtins (USVStringClass, toText)
 import Language.WASM.JSVal.Convert
 import Network.Cloudflare.Worker.Binding.D1 (FromD1Value (..), ToD1Value (..))
 import Network.Cloudflare.Worker.Binding.Service (IsServiceArg (..))
+import Network.Cloudflare.Worker.Response (WorkerResponse)
 import Network.HTTP.Media (MediaType)
 import Network.HTTP.Media qualified as M
 import Servant.API
@@ -70,6 +72,16 @@ rootApiLinks = allFieldLinks
 rootApiURIs :: RootAPI (AsLink URI)
 rootApiURIs = allFieldLinks' linkURI
 
+type data ImageJpeg
+
+instance Accept ImageJpeg where
+  contentType _ = "image" M.// "jpeg"
+
+type data ImagePng
+
+instance Accept ImagePng where
+  contentType _ = "image" M.// "png"
+
 data RootAPI mode = RootAPI
   { apiRoutes :: mode :- "api" :> NamedRoutes RestApi
   , assets :: mode :- "assets" :> Raw
@@ -79,7 +91,7 @@ data RootAPI mode = RootAPI
           :> CaptureAll "name" T.Text
           :> QueryParam' '[Required] "expiry" POSIXTime
           :> QueryParam' '[Required] "sign" T.Text
-          :> Raw
+          :> Get '[ImagePng, ImageJpeg] WorkerResponse
   , images :: mode :- "images" :> NamedRoutes ImagesAPI
   -- ^
   -- NOTE: If we include 'ImageSize' as a 'Capture'd argument,
@@ -93,11 +105,11 @@ NOTE: If we include 'ImageSize' as a 'Capture'd argument,
 resulting WASM binary exceeds 1000KiB...
 -}
 data ImagesAPI mode = ImagesAPI
-  { thumb :: mode :- "thumb" :> CaptureAll "path" T.Text :> Raw
-  , medium :: mode :- "medium" :> CaptureAll "path" T.Text :> Raw
-  , large :: mode :- "large" :> CaptureAll "path" T.Text :> Raw
-  , ogp :: mode :- "ogp" :> CaptureAll "path" T.Text :> Raw
-  , twitter :: mode :- "twitter" :> CaptureAll "path" T.Text :> Raw
+  { thumb :: mode :- "thumb" :> CaptureAll "path" T.Text :> Get '[ImagePng, ImageJpeg] WorkerResponse
+  , medium :: mode :- "medium" :> CaptureAll "path" T.Text :> Get '[ImagePng, ImageJpeg] WorkerResponse
+  , large :: mode :- "large" :> CaptureAll "path" T.Text :> Get '[ImagePng, ImageJpeg] WorkerResponse
+  , ogp :: mode :- "ogp" :> CaptureAll "path" T.Text :> Get '[ImagePng, ImageJpeg] WorkerResponse
+  , twitter :: mode :- "twitter" :> CaptureAll "path" T.Text :> Get '[ImagePng, ImageJpeg] WorkerResponse
   }
   deriving (Generic)
 
