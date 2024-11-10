@@ -95,21 +95,21 @@ default (T.Text)
 updateModel :: Action -> Model -> Effect Action Model
 updateModel NoOp m = noEff m
 updateModel (ChangeUrl url) m =
-  m <# do
+  m {mode = Idle} <# do
     pushURI url
     pure (HandleUrl url)
 updateModel (HandleUrl url) m = handleUrl url m
 updateModel (StartWithUrl url) m = m <# startUrl url
 updateModel (OpenAdminPage mcur) m =
-  m <# do
+  m {mode = Idle} <# do
     withArticles mcur $ pure . ShowAdminPage . MkAdminPage
 updateModel (ShowAdminPage adminPage) m = noEff m {mode = AdminPage adminPage}
 updateModel (OpenTopPage mcur) m =
-  m <# do
+  m {mode = Idle} <# do
     withArticles mcur $ pure . ShowTopPage . MkTopPage
 updateModel (ShowTopPage topPage) m = noEff m {mode = TopPage topPage}
 updateModel (OpenArticle slug) m =
-  m
+  m {mode = Idle}
     <# if Just slug == m ^? #mode . #_ArticlePage . #slug
       then pure NoOp
       else withArticleSlug slug (pure . ShowArticle)
@@ -117,7 +117,7 @@ updateModel (ShowArticle article) m = noEff m {mode = ArticlePage article}
 updateModel (SwitchEditViewState st) m =
   noEff $ m & #mode . viewStateT .~ st
 updateModel (OpenEditArticle slug) m =
-  m <# withArticleSlug slug (pure . ShowEditArticle)
+  m {mode = Idle} <# withArticleSlug slug (pure . ShowEditArticle)
 updateModel (ShowEditArticle article) m =
   noEff
     m
@@ -196,7 +196,7 @@ updateModel CreateNewArticle m =
 updateModel (SetNewTagName f) m =
   noEff $ m & #mode . newTagT .~ f
 updateModel OpenNewArticle m =
-  m <# do ShowNewArticle <$> liftIO getCurrentTime
+  m {mode = Idle} <# do ShowNewArticle <$> liftIO getCurrentTime
 updateModel (ShowNewArticle stamp) m =
   noEff
     m
@@ -211,7 +211,7 @@ updateModel (ShowNewArticle stamp) m =
               }
       }
 updateModel (OpenTagArticles tag mcur) m =
-  m <# do
+  m {mode = Idle} <# do
     eith <- tryAny $ callApi (api.listTagArticles tag mcur)
     case eith of
       Left err ->
@@ -270,7 +270,7 @@ updateModel (CopyValueById eid) m =
       void $ JSM.liftJSM $ clip JSM.# ("writeText" :: String) $ msg
     pure NoOp
 updateModel (DeleteArticle slug) m =
-  m <# do
+  m {mode = Idle} <# do
     eith <- tryAny $ callApi (adminAPI.deleteArticle slug)
     case eith of
       Right NoContent -> pure $ openAdminPage Nothing
