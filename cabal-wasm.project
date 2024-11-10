@@ -1,8 +1,8 @@
 import: cabal-common.project
 packages: humblr-*/*.cabal
 with-compiler: wasm32-wasi-9.10.1
-semaphore: True
 optimization: 2
+semaphore: True
 jobs: $ncpus
 
 source-repository-package

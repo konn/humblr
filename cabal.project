@@ -1,8 +1,8 @@
 import: cabal-common.project
 packages: */*.cabal
 optimization: 2
-semaphore: True
 multi-repl: True
+semaphore: True
 allow-newer:
   primitive,
   transformers

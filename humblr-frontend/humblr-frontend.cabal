@@ -51,7 +51,6 @@ library
   build-depends:
     aeson,
     bytestring,
-    cmark,
     containers,
     generic-lens,
     ghc-wasm-jsobjects,

@@ -24,7 +24,6 @@ import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as A
 import Data.Aeson.Text qualified as A
 import Data.ByteString.Char8 qualified as BS8
-import Data.Map.Strict qualified as M
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -132,7 +131,10 @@ renderArticle slug = do
         { status = 200
         , body = Just $ Resp.WorkerResponseLBS body
         , statusText = "Ok"
-        , headers = M.fromList [("Last-Modified", BS8.pack $ formatTime defaultTimeLocale rfc822DateFormat $ art.updatedAt), ("Content-Type", "text/html; charset=utf-8")]
+        , headers =
+            [ ("Last-Modified", BS8.pack $ formatTime defaultTimeLocale rfc822DateFormat $ art.updatedAt)
+            , ("Content-Type", "text/html; charset=utf-8")
+            ]
         }
 
 linkWithRoot :: T.Text -> Link -> T.Text
