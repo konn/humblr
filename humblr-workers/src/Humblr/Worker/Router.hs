@@ -42,7 +42,7 @@ import Network.Cloudflare.Worker.Binding.Assets qualified as RawAssets
 import Network.Cloudflare.Worker.Request qualified as Req
 import Network.Cloudflare.Worker.Response (WorkerResponse)
 import Servant.Auth.Cloudflare.Workers
-import Servant.Cloudflare.Workers.Cache (CacheOptions (..), serveCached)
+import Servant.Cloudflare.Workers.Cache (CacheOptions (..), serveCached, serveCachedRaw)
 import Servant.Cloudflare.Workers.Cache qualified as Cache
 import Servant.Cloudflare.Workers.Generic (AsWorker, genericCompileWorkerContext)
 import Servant.Cloudflare.Workers.Internal.Delayed (addBodyCheck)
@@ -68,7 +68,7 @@ type HumblrEnv =
 imageCacheOptions :: CacheOptions
 imageCacheOptions =
   CacheOptions
-    { cacheTTL = 14 * 24 * 3600
+    { cacheTTL = 31 * 24 * 3600
     , onlyOk = True
     , includeQuery = False
     }
@@ -108,7 +108,7 @@ workers =
     , assets = assetsFallback
     , apiRoutes = apiRoutes
     , images = imagesRoutes
-    , resources = resources
+    , resources = ResourceApi resources
     }
 
 imagesRoutes :: ImagesAPI (AsWorker HumblrEnv)
@@ -127,20 +127,19 @@ assetsFallback = Tagged \_ _ _ ->
   -- it must be 404
   toWorkerResponse $ responseServerError err404
 
-serveImageSized :: ImageSize -> [T.Text] -> App WorkerResponse
-serveImageSized sz paths = do
-  serveCached imageCacheOptions
-  images <- getBinding "IMAGES"
-  liftIO $ await' =<< images.get sz paths
+serveImageSized :: ImageSize -> [T.Text] -> WorkerT HumblrEnv Raw App
+serveImageSized sz paths = serveCachedRaw imageCacheOptions $ Tagged \_ env _ -> do
+  let images = Raw.getBinding "IMAGES" env
+  unsafeCast . jsPromise <$> images.get sz paths
 
-resources :: [T.Text] -> POSIXTime -> T.Text -> App WorkerResponse
-resources paths expiry sign = do
-  storage <- getBinding "Storage"
-  Cache.serveCached imageCacheOptions
-  liftIO $ consoleLog "Making request..."
-  resp <- liftIO $ await' =<< storage.get GetParams {..}
-  liftIO $ consoleLog "Response got!"
-  pure resp
+resources :: [T.Text] -> POSIXTime -> T.Text -> WorkerT HumblrEnv Raw App
+resources paths expiry sign = Cache.serveCachedRaw imageCacheOptions $
+  Tagged \_ env _ -> do
+    let storage = Raw.getBinding "Storage" env
+    consoleLog "Making request..."
+    resp <- unsafeCast . jsPromise <$> storage.get GetParams {..}
+    liftIO $ consoleLog "Response got!"
+    pure resp
 
 frontend :: FrontendRoutes (AsWorker HumblrEnv)
 frontend =

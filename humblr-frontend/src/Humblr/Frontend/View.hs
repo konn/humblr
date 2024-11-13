@@ -41,6 +41,7 @@ import Humblr.Frontend.Types
 import Miso hiding (view)
 import Miso.String (MisoString, toMisoString)
 import Miso.String qualified as MS
+import Servant.API (toUrlPiece)
 import Servant.Auth.Client ()
 
 viewModel :: Model -> View Action
@@ -58,6 +59,22 @@ viewModel m@Model {..} =
         ]
       ++ [modalView v | v <- maybeToList modal]
       ++ [footerView]
+
+-- FIXME: use 'E' to preventDefault only when the modifier key is pressed
+onPreventClick :: Action -> Attribute Action
+onPreventClick action =
+  onWithOptions
+    defaultOptions {preventDefault = True}
+    "click"
+    ( keyInfoDecoder
+        { decoder = \v -> do
+            ki <- keyInfoDecoder.decoder v
+            if ki.shiftKey || ki.ctrlKey || ki.metaKey || ki.altKey
+              then fail "Modifier key is pressed"
+              else pure ()
+        }
+    )
+    (\() -> action)
 
 modalView :: Modal -> View Action
 modalView (Share ShareInfo {title, url}) =
@@ -129,7 +146,13 @@ adminPageView =
           [ div_ [class_ "level-left"] $ "Admin: Recent Articles " : cursor
           , div_
               [class_ "level-right"]
-              [button_ [class_ "button is-link", onClick $ openNewArticle] [icon "add"]]
+              [ button_
+                  [ class_ "button is-link"
+                  , onPreventClick openNewArticle
+                  , href_ $ toUrlPiece rootApiLinks.frontend.newArticle
+                  ]
+                  [icon "add"]
+              ]
           ]
       ]
 
@@ -223,7 +246,8 @@ generalEditView ea =
                           [class_ "control"]
                           [ button_
                               [ class_ "button is-light"
-                              , onClick $ openArticle $ ea ^. slugG
+                              , onPreventClick $ openArticle $ ea ^. slugG
+                              , href_ $ toUrlPiece $ rootApiLinks.frontend.articlePage $ ea ^. slugG
                               ]
                               ["Cancel"]
                           ]
@@ -422,7 +446,11 @@ articleView :: ArticleViewMode -> Article -> [View Action]
 articleView mode art@Article {..} =
   let linkToArticle =
         case mode of
-          FrontEndArticle -> a_ [onClick $ openArticle slug]
+          FrontEndArticle ->
+            a_
+              [ onPreventClick $ openArticle slug
+              , href_ $ toUrlPiece $ rootApiLinks.frontend.articlePage slug
+              ]
           PreviewArticle -> a_ []
       tagsView =
         div_ [class_ "field is-grouped is-grouped-multiline"] $
@@ -493,7 +521,11 @@ shareButton art =
     [iconSmall "share"]
 
 linkToTag :: ArticleViewMode -> MisoString -> [View Action] -> View Action
-linkToTag FrontEndArticle tag = a_ [onClick $ openTagArticles tag Nothing]
+linkToTag FrontEndArticle tag =
+  a_
+    [ onPreventClick $ openTagArticles tag Nothing
+    , href_ $ toUrlPiece $ rootApiLinks.frontend.tagArticles tag Nothing
+    ]
 linkToTag PreviewArticle _ = a_ []
 
 topPageView :: TopPage -> [View Action]
@@ -520,16 +552,34 @@ articlesList title as =
           ]
       , let backAttr =
               class_ (MS.unwords $ "pagination-previous" : ["is-disabled" | page <= 0])
-                : [onClick $ gotoPageAction as (page - 1) | page > 0]
+                : mconcat
+                  [ [ onPreventClick $ gotoPageAction as (page - 1)
+                    , href_ $ toUrlPiece $ gotoPageLink as $ Just $ page - 1
+                    ]
+                  | page > 0
+                  ]
             nextAttr =
               class_ (MS.unwords $ "pagination-next" : ["is-disabled" | not hasNext])
-                : [onClick $ gotoPageAction as (page + 1) | hasNext]
+                : mconcat
+                  [ [ onPreventClick $ gotoPageAction as (page + 1)
+                    , href_ $ toUrlPiece $ gotoPageLink as $ Just $ page + 1
+                    ]
+                  | hasNext
+                  ]
             oneAttr
               | page == 0 = [class_ "pagination-link is-current"]
-              | otherwise = [class_ "pagination-link", onClick $ gotoPageAction as 0]
+              | otherwise =
+                  [ class_ "pagination-link"
+                  , onPreventClick $ gotoPageAction as 0
+                  , href_ $ toUrlPiece $ gotoPageLink as Nothing
+                  ]
             endAttr
               | page == totalPage - 1 = [class_ "pagination-link is-current"]
-              | otherwise = [class_ "pagination-link", onClick $ gotoPageAction as $ totalPage - 1]
+              | otherwise =
+                  [ class_ "pagination-link"
+                  , onPreventClick $ gotoPageAction as $ totalPage - 1
+                  , href_ $ toUrlPiece $ gotoPageLink as $ Just $ totalPage - 1
+                  ]
             totalPage = ceiling (fromIntegral @_ @Double total / 10)
             ellipsis = li_ [class_ "pagination-ellipsis"] ["…"]
          in nav_
@@ -561,7 +611,11 @@ articlesList title as =
 
 articleOverview :: forall arts -> (HasArticles arts) => Article -> View Action
 articleOverview arts art@Article {..} =
-  let linkToArticle = a_ [onClick $ articleAction arts slug]
+  let linkToArticle =
+        a_
+          [ onPreventClick $ articleAction arts slug
+          , href_ $ toUrlPiece $ articleLink arts slug
+          ]
       nodes = CM.commonmarkToNode [] body
    in div_
         [class_ "box theme-light"]
@@ -626,7 +680,14 @@ headerView m =
             [class_ "hero-body"]
             [ div_
                 [class_ "container has-text-centered"]
-                [ h1_ [class_ "title"] [a_ [onClick $ openAdminPage Nothing] ["Admin ごはんぶらー"]]
+                [ h1_
+                    [class_ "title"]
+                    [ a_
+                        [ onPreventClick $ openAdminPage Nothing
+                        , href_ $ toUrlPiece $ rootApiLinks.frontend.adminHome Nothing
+                        ]
+                        ["Admin ごはんぶらー"]
+                    ]
                 ]
             ]
         ]
@@ -637,7 +698,14 @@ headerView m =
             [class_ "hero-body"]
             [ div_
                 [class_ "container has-text-centered"]
-                [ h1_ [class_ "title"] [a_ [onClick $ openTopPage Nothing] ["ごはんぶらー"]]
+                [ h1_
+                    [class_ "title"]
+                    [ a_
+                        [ onPreventClick $ openTopPage Nothing
+                        , href_ $ toUrlPiece $ rootApiLinks.frontend.topPage Nothing
+                        ]
+                        ["ごはんぶらー"]
+                    ]
                 ]
             ]
         ]

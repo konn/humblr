@@ -41,6 +41,7 @@ module Humblr.Frontend.Actions (
   slugL,
   HasArticles (..),
   articleAction,
+  articleLink,
   articlesT,
   BlobURLs (..),
   generateOGP,
@@ -89,6 +90,7 @@ import Servant.API (
  )
 import Servant.Auth.Client (Token (CloudflareToken))
 import Servant.Client.FetchAPI
+import Servant.Links (Link)
 
 default (T.Text)
 
@@ -519,26 +521,38 @@ newTagT =
 class HasArticles a where
   articlesL :: Lens' a (Paged Article)
   articleAction# :: Proxy# a -> T.Text -> Action
+  articleLink# :: Proxy# a -> T.Text -> Link
   gotoPageAction :: a -> Word -> Action
+  gotoPageLink :: a -> Maybe Word -> Link
 
 articleAction :: forall a -> (HasArticles a) => T.Text -> Action
 {-# INLINE articleAction #-}
 articleAction a = articleAction# @a proxy#
 
+articleLink :: forall a -> (HasArticles a) => T.Text -> Link
+{-# INLINE articleLink #-}
+articleLink a = articleLink# @a proxy#
+
 instance HasArticles TagArticles where
   articlesL = #articles
   articleAction# _ = openArticle
+  articleLink# _ = rootApiLinks.frontend.articlePage
   gotoPageAction a = openTagArticles a.tag . Just
+  gotoPageLink a = rootApiLinks.frontend.tagArticles a.tag
 
 instance HasArticles TopPage where
   articlesL = #articles
   articleAction# _ = openArticle
+  articleLink# _ = rootApiLinks.frontend.articlePage
   gotoPageAction _ = openTopPage . Just
+  gotoPageLink _ = rootApiLinks.frontend.topPage
 
 instance HasArticles AdminPage where
   articlesL = #articles
   articleAction# _ = openEditArticle
+  articleLink# _ = rootApiLinks.frontend.editArticle
   gotoPageAction _ = openAdminPage . Just
+  gotoPageLink _ = rootApiLinks.frontend.adminHome
 
 articlesT :: Traversal' Mode (Paged Article)
 articlesT =

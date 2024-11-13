@@ -40,7 +40,6 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Clock.POSIX (POSIXTime, getPOSIXTime)
-import Data.Type.Equality
 import Data.Vector qualified as V
 import Data.Word (Word8)
 import GHC.Generics (Generic)
@@ -48,7 +47,7 @@ import GHC.Wasm.Object.Builtins
 import GHC.Wasm.Web.Generated.SubtleCrypto (js_fun_importKey_KeyFormat_object_AlgorithmIdentifier_boolean_sequence_KeyUsage_Promise_any, js_fun_sign_AlgorithmIdentifier_CryptoKey_BufferSource_Promise_any)
 import GHC.Wasm.Web.JSON (encodeJSON)
 import GHC.Wasm.Web.ReadableStream (ReadableStream)
-import Humblr.Types (RootAPI (..), rootApiLinks)
+import Humblr.Types (ResourceApi (..), RootAPI (..), rootApiLinks)
 import Language.WASM.JSVal.Convert
 import Network.Cloudflare.Worker.Binding hiding (getBinding, getEnv, getSecret)
 import Network.Cloudflare.Worker.Binding.KV (KVClass)
@@ -56,7 +55,6 @@ import Network.Cloudflare.Worker.Binding.KV qualified as KV
 import Network.Cloudflare.Worker.Binding.R2 (R2Class)
 import Network.Cloudflare.Worker.Binding.R2 qualified as R2
 import Network.Cloudflare.Worker.Binding.Service (
-  FunSig (..),
   IsServiceArg,
   Service,
   ServiceClass,
@@ -64,7 +62,6 @@ import Network.Cloudflare.Worker.Binding.Service (
   ToService (..),
   getBinding,
   getEnv,
-  type (~>),
  )
 import Network.Cloudflare.Worker.Crypto (subtleCrypto)
 import Network.Cloudflare.Worker.Response (WorkerResponse)
@@ -91,13 +88,7 @@ type StorageService = Service StorageFuns
 
 type StorageServiceClass = ServiceClass StorageServiceFields
 
-type StorageServiceFields =
-  '[ '("get", GetParams ~> Return WorkerResponse)
-   , '("put", T.Text ~> T.Text ~> ReadableStream ~> Return T.Text)
-   , '("issueSignedURL", SignParams ~> Return (Maybe T.Text))
-   ]
-
-_ = Refl :: StorageServiceFields :~: Signature StorageEnv StorageServiceFuns
+type StorageServiceFields = Signature StorageEnv StorageServiceFuns
 
 type StorageEnv =
   BindingsClass
@@ -155,7 +146,7 @@ issueSignedURL SignParams {..} = do
           signedUrl =
             T.dropWhileEnd (== '/') root
               <> "/"
-              <> toUrlPiece (rootApiLinks.resources paths expiry $ TE.decodeUtf8 sgnBS)
+              <> toUrlPiece (rootApiLinks.resources.getResource paths expiry $ TE.decodeUtf8 sgnBS)
       pure signedUrl
 
 align15Mins :: POSIXTime -> POSIXTime

@@ -33,6 +33,7 @@ module Humblr.Types (
   RestApi (..),
   AdminAPI (..),
   ImagesAPI (..),
+  ResourceApi (..),
   imageLink,
   ImageSize (..),
   FrontendRoutes (..),
@@ -90,13 +91,7 @@ instance Accept Html where
 data RootAPI mode = RootAPI
   { apiRoutes :: mode :- "api" :> NamedRoutes RestApi
   , assets :: mode :- "assets" :> Raw
-  , resources ::
-      mode
-        :- "resources"
-          :> CaptureAll "name" T.Text
-          :> QueryParam' '[Required] "expiry" POSIXTime
-          :> QueryParam' '[Required] "sign" T.Text
-          :> Get '[ImagePng, ImageJpeg] WorkerResponse
+  , resources :: mode :- NamedRoutes ResourceApi
   , images :: mode :- "images" :> NamedRoutes ImagesAPI
   -- ^
   -- NOTE: If we include 'ImageSize' as a 'Capture'd argument,
@@ -105,18 +100,39 @@ data RootAPI mode = RootAPI
   }
   deriving (Generic)
 
+data ResourceApi mode = ResourceApi
+  { getResource ::
+      mode
+        :- "resources"
+          :> CaptureAll "name" T.Text
+          :> QueryParam' '[Required] "expiry" POSIXTime
+          :> QueryParam' '[Required] "sign" T.Text
+          :> Raw
+          -- Making Raw into the following saffocates the Images worker... why?
+          --  :> Get '[ImagePng, ImageJpeg] WorkerResponse
+  }
+  deriving (Generic)
+
 {- |
 NOTE: If we include 'ImageSize' as a 'Capture'd argument,
 resulting WASM binary exceeds 1000KiB...
 -}
 data ImagesAPI mode = ImagesAPI
-  { thumb :: mode :- "thumb" :> CaptureAll "path" T.Text :> Get '[ImagePng, ImageJpeg] WorkerResponse
-  , medium :: mode :- "medium" :> CaptureAll "path" T.Text :> Get '[ImagePng, ImageJpeg] WorkerResponse
-  , large :: mode :- "large" :> CaptureAll "path" T.Text :> Get '[ImagePng, ImageJpeg] WorkerResponse
-  , ogp :: mode :- "ogp" :> CaptureAll "path" T.Text :> Get '[ImagePng, ImageJpeg] WorkerResponse
-  , twitter :: mode :- "twitter" :> CaptureAll "path" T.Text :> Get '[ImagePng, ImageJpeg] WorkerResponse
+  { thumb :: mode :- ImageGetter "thumb"
+  , medium :: mode :- ImageGetter "medium"
+  , large :: mode :- ImageGetter "large"
+  , ogp :: mode :- ImageGetter "ogp"
+  , twitter :: mode :- ImageGetter "twitter"
   }
   deriving (Generic)
+
+type ImageGetter size =
+  size
+    :> CaptureAll "path" T.Text
+    :> Raw
+
+--    Making Raw into the following makes image hang...
+--    :> Get '[ImagePng, ImageJpeg] WorkerResponse
 
 imageLink :: ImageSize -> [T.Text] -> Link
 imageLink sz = case sz of

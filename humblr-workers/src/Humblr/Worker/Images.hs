@@ -21,31 +21,54 @@
 
 module Humblr.Worker.Images (ImagesServiceClass, JSObject (..), handlers, ImagesService) where
 
+import Control.Exception (Exception (..))
+import Control.Monad ((<=<))
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Maybe
 import Data.Aeson qualified as A
+import Data.Bitraversable (Bitraversable (bitraverse))
+import Data.ByteString qualified as BS
 import Data.ByteString.Lazy.Char8 qualified as LBS8
 import Data.Char qualified as C
 import Data.String (fromString)
 import Data.Text qualified as T
+import Data.Word (Word16)
 import GHC.Generics
 import GHC.Wasm.Object.Builtins
+import GHC.Wasm.Web.Generated.Headers (js_iter_Headers_ByteString_ByteString)
+import GHC.Wasm.Web.Generated.RequestInfo (RequestInfo)
+import GHC.Wasm.Web.Generated.RequestInit (RequestInitClass)
+import GHC.Wasm.Web.Generated.Response (Response, ResponseClass, js_get_body, js_get_status, js_get_statusText)
+import GHC.Wasm.Web.Generated.Response qualified as RawResp
 import GHC.Wasm.Web.JSON (encodeJSON)
+import GHC.Wasm.Web.ReadableStream (fromReadableStream)
 import Humblr.Frontend.Types (ImageSize (..))
 import Humblr.Worker.Storage (SignParams (..), StorageServiceClass)
 import Humblr.Worker.Utils
+import Lens.Family.Total
 import Network.Cloudflare.Worker.Binding (BindingsClass)
-import Network.Cloudflare.Worker.Binding.Service
+import Network.Cloudflare.Worker.Binding.Service (
+  ServiceClass,
+  ServiceM,
+  ToService (..),
+  getBinding,
+ )
 import Network.Cloudflare.Worker.FetchAPI (fetch)
 import Network.Cloudflare.Worker.Response (WorkerResponse)
-import Servant.Cloudflare.Workers (err404)
+import Servant.Cloudflare.Workers (ServerError (..), err404, err500)
 import Servant.Cloudflare.Workers.Internal.Response (toWorkerResponse)
 import Servant.Cloudflare.Workers.Internal.ServerError (responseServerError)
+import Streaming.ByteString qualified as Q
+import Streaming.Prelude qualified as S
 
 data ImagesServiceFuns = ImagesServiceFuns
-  {get :: ImageSize -> [T.Text] -> App WorkerResponse}
+  { get :: ImageSize -> [T.Text] -> App WorkerResponse
+  }
   deriving (Generic)
-  deriving anyclass (ToService SSREnv)
+
+deriving anyclass instance
+  (ssrEnv ~ SSREnv) =>
+  ToService ssrEnv ImagesServiceFuns
 
 type App = ServiceM SSREnv '[]
 
@@ -144,4 +167,80 @@ withImageOptions opts paths
           liftIO $ consoleLog $ fromString $ LBS8.unpack $ A.encode cfObj
           liftIO do
             cf <- encodeJSON cfObj
-            fmap unsafeCast . await =<< fetch (inject $ fromText @USVStringClass url) (nonNull $ unsafeCast cf)
+            consoleLog $ "Encoded."
+            skimJSON cf
+            resl <- fetchWith (inject $ fromText @USVStringClass url) (nonNull $ unsafeCast cf)
+            case resl of
+              Left e -> do
+                consoleLog $ fromString $ "Error during fetch: " <> show e
+                toWorkerResponse $ responseServerError err500 {errBody = "Storage connection failure: " <> fromString (displayException e)}
+              Right res -> do
+                consoleLog "Response successfully attained!"
+                pure $ unsafeCast res
+
+foreign import javascript unsafe "console.log(JSON.stringify($1))"
+  skimJSON :: JSObject e -> IO ()
+
+data FetchError
+  = InvariantViolation String
+  | StatusError !Word16 !BS.ByteString !BS.ByteString ![(BS.ByteString, BS.ByteString)]
+  | UnknownError String
+  deriving (Show, Eq, Ord, Generic)
+  deriving anyclass (Exception)
+
+fetchWith ::
+  RequestInfo ->
+  Nullable RequestInitClass ->
+  IO (Either FetchError Response)
+fetchWith reqInfo mReqInit = do
+  -- NOTE: We once used newDicationary, but it seems its purity makes GHC optimiser
+  -- work wrong and makes consecutive calls to reuse body from the previous request.
+  -- This must not be the case, so we provide a direct reqinit construction to avoid
+  -- the bug.
+  res <- await =<< js_handle_fetch =<< fetch reqInfo mReqInit
+  resl <- getDictField "result" res
+  resl
+    & ( _case
+          & onEnum' #ok do
+            mresp <- fromNullable <$> getDictField "response" res
+            case mresp of
+              Nothing -> pure $ Left $ InvariantViolation "ok returned, but got no response!"
+              Just resp -> pure $ Right resp
+          & onEnum' #statusError do
+            mresp <- fromNullable <$> getDictField "response" res
+            case mresp of
+              Just resp -> do
+                status <- js_get_status resp
+                msg <- toHaskellByteString =<< js_get_statusText resp
+                hdrs <-
+                  mapM (bitraverse toHaskellByteString toHaskellByteString)
+                    =<< nullable
+                      mempty
+                      ( S.toList_ . fromPairIterable
+                          <=< js_iter_Headers_ByteString_ByteString
+                          <=< RawResp.js_get_headers
+                      )
+                    =<< getDictField "response" res
+                body <- nullable mempty (Q.toStrict_ . fromReadableStream) =<< js_get_body resp
+                pure $ Left $ StatusError status msg body hdrs
+              Nothing -> pure $ Left $ InvariantViolation "statusError returned, but got no response!"
+          & onEnum' #error do
+            Left
+              . UnknownError
+              . ("UnknownError during fetch: " <>)
+              . nullable "(No Message)" (T.unpack . toText)
+              <$> getDictField "message" res
+      )
+
+type FetchResultFields =
+  '[ '("result", EnumClass '["ok", "statusError", "error"])
+   , '("response", NullableClass ResponseClass)
+   , '("message", NullableClass USVStringClass)
+   ]
+
+type FetchResultClass = JSDictionaryClass FetchResultFields
+
+foreign import javascript safe "try { const resp = await $1; if (resp.ok) { return {result: 'ok', response: resp, message: null } } else { return {result:  'statusError', response: resp, message: resp.statusText} } } catch (error) { return {result: 'error', message: error.toString(), response: null } }"
+  js_handle_fetch ::
+    Promise ResponseClass ->
+    IO (Promise FetchResultClass)
