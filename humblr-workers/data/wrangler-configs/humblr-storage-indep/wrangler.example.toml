@@ -1,4 +1,4 @@
-name = "humblr-storage"
+name = "humblr-storage-indep"
 main = "src/worker.js"
 workers_dev = false 
 compatibility_date = "2024-10-22"

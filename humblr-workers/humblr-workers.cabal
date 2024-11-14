@@ -147,6 +147,21 @@ executable humblr-storage
       "-optl-Wl,--export=handlers"
   build-depends: humblr-workers
 
+executable humblr-storage-indep
+  import: defaults
+  hs-source-dirs: app/storage-indep
+  main-is: Main.hs
+  ghc-options: -O2
+  -- cabal-gild: discover app/storage-indep --exclude=app/storage-indep/Main.hs
+  other-modules:
+
+  if os(wasi)
+    ghc-options:
+      -no-hs-main
+      -optl-mexec-model=reactor
+      "-optl-Wl,--export=handlers"
+  build-depends: humblr-workers
+
 executable humblr-ssr
   import: defaults
   hs-source-dirs: app/ssr

@@ -72,7 +72,7 @@ deriving anyclass instance
 
 type App = ServiceM ImagesEnv '[]
 
-type ImagesEnv = BindingsClass '["ROOT_URI"] '[] '[ '("STORAGE", StorageServiceClass)]
+type ImagesEnv = BindingsClass '[] '[] '[ '("STORAGE", StorageServiceClass)]
 
 type ImagesFuns = Signature ImagesEnv ImagesServiceFuns
 
