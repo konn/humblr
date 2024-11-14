@@ -50,6 +50,7 @@ import GHC.Wasm.Web.Generated.SubtleCrypto (js_fun_importKey_KeyFormat_object_Al
 import GHC.Wasm.Web.JSON (encodeJSON)
 import GHC.Wasm.Web.ReadableStream (ReadableStream)
 import Humblr.Types (ResourceApi (..), RootAPI (..), rootApiLinks)
+import Humblr.Worker.Utils (consoleLog)
 import Language.WASM.JSVal.Convert
 import Network.Cloudflare.Worker.Binding hiding (getBinding, getEnv, getSecret)
 import Network.Cloudflare.Worker.Binding.KV (KV, KVClass)
@@ -64,16 +65,17 @@ import Network.Cloudflare.Worker.Binding.Service (
   ToService (..),
   getBinding,
   getEnv,
+  toService',
  )
 import Network.Cloudflare.Worker.Crypto (subtleCrypto)
 import Network.Cloudflare.Worker.Handler (JSHandlers)
 import Network.Cloudflare.Worker.Response (WorkerResponse)
 import Network.Cloudflare.Worker.Response qualified as Resp
 import Servant.Auth.Cloudflare.Workers.Internal.JWT (CryptoKey, JWSAlg (HS256), toAlogirhtmIdentifier, verifySignature)
-import Servant.Cloudflare.Workers.Generic (genericCompileWorker)
+import Servant.Cloudflare.Workers.Generic (genericCompileWorker, genericServe)
 import Servant.Cloudflare.Workers.Internal.Response (toWorkerResponse)
 import Servant.Cloudflare.Workers.Internal.ServerError (ServerError (..), err403, responseServerError)
-import Servant.Cloudflare.Workers.Prelude (ToHttpApiData (toUrlPiece), err404)
+import Servant.Cloudflare.Workers.Prelude (Handler, ToHttpApiData (toUrlPiece), err404)
 import Servant.Cloudflare.Workers.Prelude qualified as Servant
 import Wasm.Prelude.Linear qualified as PL
 
@@ -85,7 +87,8 @@ data StorageServiceFuns = StorageServiceFuns
   , issueSignedURL :: SignParams -> App (Maybe T.Text)
   }
   deriving (Generic)
-  deriving anyclass (ToService StorageEnv)
+
+deriving anyclass instance ToService StorageEnv StorageServiceFuns
 
 type StorageFuns = Signature StorageEnv StorageServiceFuns
 
@@ -122,18 +125,28 @@ data SignPayload = SignPayload {paths :: ![T.Text], expiry :: !POSIXTime}
 
 handlers :: IO (Service StorageFuns)
 handlers =
-  toService @StorageEnv StorageServiceFuns {get, put, issueSignedURL}
+  toService' @StorageEnv (Just fetch) StorageServiceFuns {get, put, issueSignedURL}
+  where
+    fetch req env ctx = do
+      consoleLog $ "fetching..."
+      resp <-
+        genericServe @StorageEnv ResourceApi {getResource = getResourceHandler} req env ctx
+      consoleLog "Resp: "
+      consoleLog (constructorName resp)
+      pure resp
 
 data ResourceException = ResourceNotFound T.Text
   deriving (Show, Exception)
 
 indepHandlers :: IO JSHandlers
-indepHandlers = genericCompileWorker @StorageEnv ResourceApi {..}
-  where
-    getResource paths expiry sign = do
-      r2 <- Servant.getBinding "R2"
-      key <- liftIO . getSignKey =<< Servant.getBinding "KV"
-      liftIO $ getResourceWith r2 key GetParams {..}
+indepHandlers = genericCompileWorker @StorageEnv ResourceApi {getResource = getResourceHandler}
+
+getResourceHandler :: [T.Text] -> POSIXTime -> T.Text -> Handler StorageEnv WorkerResponse
+getResourceHandler paths expiry sign = do
+  liftIO $ consoleLog "Getting Resource..."
+  r2 <- Servant.getBinding "R2"
+  key <- liftIO . getSignKey =<< Servant.getBinding "KV"
+  liftIO $ getResourceWith r2 key GetParams {..}
 
 issueSignedURL :: SignParams -> App (Maybe T.Text)
 issueSignedURL SignParams {..} = do
@@ -246,3 +259,6 @@ put slug path body = do
         =<< await'
         =<< R2.put r2 (TE.encodeUtf8 name) (nonNull $ inject body)
   pure name
+
+foreign import javascript unsafe "$1.constructor.name"
+  constructorName :: JSObject a -> USVString

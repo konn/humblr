@@ -1,7 +1,7 @@
 import: cabal-common.project
 packages: */*.cabal
-optimization: 2
 multi-repl: True
+optimization: 2
 semaphore: True
 allow-newer:
   primitive,

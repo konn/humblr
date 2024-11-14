@@ -52,6 +52,7 @@ import Network.Cloudflare.Worker.Binding.Service (
   ServiceM,
   ToService (..),
   getBinding,
+  toService,
  )
 import Network.Cloudflare.Worker.FetchAPI (fetch)
 import Network.Cloudflare.Worker.Response (WorkerResponse)
