@@ -107,9 +107,7 @@ data ResourceApi mode = ResourceApi
           :> CaptureAll "name" T.Text
           :> QueryParam' '[Required] "expiry" POSIXTime
           :> QueryParam' '[Required] "sign" T.Text
-          :> Raw
-          -- Making Raw into the following saffocates the Images worker... why?
-          --  :> Get '[ImagePng, ImageJpeg] WorkerResponse
+          :> Get '[ImagePng, ImageJpeg] WorkerResponse
   }
   deriving (Generic)
 
@@ -129,10 +127,7 @@ data ImagesAPI mode = ImagesAPI
 type ImageGetter size =
   size
     :> CaptureAll "path" T.Text
-    :> Raw
-
---    Making Raw into the following makes image hang...
---    :> Get '[ImagePng, ImageJpeg] WorkerResponse
+    :> Get '[ImagePng, ImageJpeg] WorkerResponse
 
 imageLink :: ImageSize -> [T.Text] -> Link
 imageLink sz = case sz of
