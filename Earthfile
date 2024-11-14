@@ -103,10 +103,6 @@ all:
   BUILD --platform=linux/amd64 +build-worker --target=humblr-storage --wasm=worker.wasm
   COPY (+build-worker/dist --target=humblr-storage) ./dist/storage
 
-  # Build storage worker (indep)
-  BUILD --platform=linux/amd64 +build-worker --target=humblr-storage-indep --wasm=worker.wasm
-  COPY (+build-worker/dist --target=humblr-storage-indep) ./dist/storage-indep
-
   # Build SSR worker
   BUILD --platform=linux/amd64 +build-worker --target=humblr-storage --wasm=worker.wasm
   COPY (+build-worker/dist --target=humblr-ssr) ./dist/ssr

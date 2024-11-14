@@ -21,7 +21,6 @@
 module Humblr.Worker.Storage (
   handlers,
   JSHandlers,
-  indepHandlers,
   JSObject (..),
   StorageService,
   StorageServiceClass,
@@ -72,10 +71,10 @@ import Network.Cloudflare.Worker.Handler (JSHandlers)
 import Network.Cloudflare.Worker.Response (WorkerResponse)
 import Network.Cloudflare.Worker.Response qualified as Resp
 import Servant.Auth.Cloudflare.Workers.Internal.JWT (CryptoKey, JWSAlg (HS256), toAlogirhtmIdentifier, verifySignature)
-import Servant.Cloudflare.Workers.Generic (genericCompileWorker, genericServe)
+import Servant.Cloudflare.Workers.Generic (genericServe)
 import Servant.Cloudflare.Workers.Internal.Response (toWorkerResponse)
 import Servant.Cloudflare.Workers.Internal.ServerError (ServerError (..), err403, responseServerError)
-import Servant.Cloudflare.Workers.Prelude (Handler, ToHttpApiData (toUrlPiece), err404)
+import Servant.Cloudflare.Workers.Prelude (FetchHandler, Handler, ToHttpApiData (toUrlPiece), err404)
 import Servant.Cloudflare.Workers.Prelude qualified as Servant
 import Wasm.Prelude.Linear qualified as PL
 
@@ -125,21 +124,13 @@ data SignPayload = SignPayload {paths :: ![T.Text], expiry :: !POSIXTime}
 
 handlers :: IO (Service StorageFuns)
 handlers =
-  toService' @StorageEnv (Just fetch) StorageServiceFuns {get, put, issueSignedURL}
-  where
-    fetch req env ctx = do
-      consoleLog $ "fetching..."
-      resp <-
-        genericServe @StorageEnv ResourceApi {getResource = getResourceHandler} req env ctx
-      consoleLog "Resp: "
-      consoleLog (constructorName resp)
-      pure resp
+  toService' @StorageEnv (Just fetchHandler) StorageServiceFuns {get, put, issueSignedURL}
 
 data ResourceException = ResourceNotFound T.Text
   deriving (Show, Exception)
 
-indepHandlers :: IO JSHandlers
-indepHandlers = genericCompileWorker @StorageEnv ResourceApi {getResource = getResourceHandler}
+fetchHandler :: FetchHandler StorageEnv
+fetchHandler = genericServe @StorageEnv ResourceApi {getResource = getResourceHandler}
 
 getResourceHandler :: [T.Text] -> POSIXTime -> T.Text -> Handler StorageEnv WorkerResponse
 getResourceHandler paths expiry sign = do
@@ -259,6 +250,3 @@ put slug path body = do
         =<< await'
         =<< R2.put r2 (TE.encodeUtf8 name) (nonNull $ inject body)
   pure name
-
-foreign import javascript unsafe "$1.constructor.name"
-  constructorName :: JSObject a -> USVString
