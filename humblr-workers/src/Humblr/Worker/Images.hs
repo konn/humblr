@@ -67,21 +67,21 @@ data ImagesServiceFuns = ImagesServiceFuns
   deriving (Generic)
 
 deriving anyclass instance
-  (ssrEnv ~ SSREnv) =>
-  ToService ssrEnv ImagesServiceFuns
+  (storageEnv ~ StorageEnv) =>
+  ToService storageEnv ImagesServiceFuns
 
-type App = ServiceM SSREnv '[]
+type App = ServiceM StorageEnv '[]
 
-type SSREnv = BindingsClass '["ROOT_URI"] '[] '[ '("STORAGE", StorageServiceClass)]
+type StorageEnv = BindingsClass '["ROOT_URI"] '[] '[ '("STORAGE", StorageServiceClass)]
 
-type SSRFuns = Signature SSREnv ImagesServiceFuns
+type StorageFuns = Signature StorageEnv ImagesServiceFuns
 
-type ImagesServiceClass = ServiceClass SSRFuns
+type ImagesServiceClass = ServiceClass StorageFuns
 
 type ImagesService = JSObject ImagesServiceClass
 
 handlers :: IO ImagesService
-handlers = toService @SSREnv ImagesServiceFuns {get}
+handlers = toService @StorageEnv ImagesServiceFuns {get}
 
 data Fit = ScaleDown | Contain | Cover | Crop | Pad
   deriving (Show, Eq, Ord, Generic)
