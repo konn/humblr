@@ -326,11 +326,8 @@ startUrl url = do
 
 startArticle :: URI -> T.Text -> JSM Action
 startArticle url slug = do
-  consoleLog $ "starting article..."
   marticle <- getProp "article" . Object =<< eval ("window" :: String)
-  consoleLog "Got Article"
   absent <- ghcjsPure $ isUndefined marticle
-  consoleLog $ "Is undefined?: " <> toMisoString (show absent)
   fromMaybe (HandleUrl url) <$> runMaybeT do
     guard $ not absent
     src <- MaybeT $ fromJSVal marticle
@@ -386,7 +383,6 @@ handleUrl url =
     topPage mcur m = m <# pure (OpenTopPage mcur)
     articlePage slug m =
       m <# do
-        consoleLog "Handling article"
         pure (OpenArticle slug)
     newArticle m = m <# pure OpenNewArticle
     editArticle slug m = m <# pure (OpenEditArticle slug)

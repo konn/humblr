@@ -28,7 +28,6 @@ import Control.Monad.Trans.Maybe
 import Data.Aeson qualified as A
 import Data.Bitraversable (Bitraversable (bitraverse))
 import Data.ByteString qualified as BS
-import Data.ByteString.Lazy.Char8 qualified as LBS8
 import Data.Char qualified as C
 import Data.String (fromString)
 import Data.Text qualified as T
@@ -44,7 +43,6 @@ import GHC.Wasm.Web.JSON (encodeJSON)
 import GHC.Wasm.Web.ReadableStream (fromReadableStream)
 import Humblr.Frontend.Types (ImageSize (..))
 import Humblr.Worker.Storage (SignParams (..), StorageServiceClass)
-import Humblr.Worker.Utils
 import Lens.Family.Total
 import Network.Cloudflare.Worker.Binding (BindingsClass)
 import Network.Cloudflare.Worker.Binding.Service (
@@ -161,26 +159,15 @@ withImageOptions opts paths
       storage <- getBinding "STORAGE"
       liftIO $
         maybe (toWorkerResponse $ responseServerError err404) pure =<< runMaybeT do
-          liftIO $ consoleLog $ fromString $ "Issueing URL for " <> show opts <> "..."
           url <- MaybeT $ await' =<< storage.issueSignedURL SignParams {duration = 60, ..}
-          liftIO $ consoleLog $ fromText $ "URL attained: " <> url
           let cfObj = A.object ["cf" A..= A.object ["image" A..= opts]]
-          liftIO $ consoleLog $ fromString $ LBS8.unpack $ A.encode cfObj
           liftIO do
             cf <- encodeJSON cfObj
-            consoleLog $ "Encoded."
-            skimJSON cf
             resl <- fetchWith (inject $ fromText @USVStringClass url) (nonNull $ unsafeCast cf)
             case resl of
               Left e -> do
-                consoleLog $ fromString $ "Error during fetch: " <> show e
                 toWorkerResponse $ responseServerError err500 {errBody = "Storage connection failure: " <> fromString (displayException e)}
-              Right res -> do
-                consoleLog "Response successfully attained!"
-                pure $ unsafeCast res
-
-foreign import javascript unsafe "console.log(JSON.stringify($1))"
-  skimJSON :: JSObject e -> IO ()
+              Right res -> pure $ unsafeCast res
 
 data FetchError
   = InvariantViolation String

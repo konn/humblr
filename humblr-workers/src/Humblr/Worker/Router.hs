@@ -34,7 +34,6 @@ import Humblr.Worker.Database (DatabaseServiceClass)
 import Humblr.Worker.Images (ImagesServiceClass)
 import Humblr.Worker.SSR (SSRServiceClass)
 import Humblr.Worker.Storage (GetParams (..), StorageServiceClass)
-import Humblr.Worker.Utils (consoleLog)
 import Network.Cloudflare.Worker.Binding hiding (getBinding, getEnv, getSecret)
 import Network.Cloudflare.Worker.Binding qualified as Raw
 import Network.Cloudflare.Worker.Binding.Assets (AssetsClass)
@@ -137,11 +136,7 @@ resources :: [T.Text] -> POSIXTime -> T.Text -> App WorkerResponse
 resources paths expiry sign = do
   Cache.serveCached imageCacheOptions
   storage <- getBinding "Storage"
-  liftIO do
-    consoleLog "Making request..."
-    resp <- unsafeCast . jsPromise <$> storage.get GetParams {..}
-    liftIO $ consoleLog "Response got!"
-    pure resp
+  liftIO $ unsafeCast . jsPromise <$> storage.get GetParams {..}
 
 frontend :: FrontendRoutes (AsWorker HumblrEnv)
 frontend =

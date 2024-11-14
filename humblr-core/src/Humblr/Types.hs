@@ -103,7 +103,7 @@ data RootAPI mode = RootAPI
 data ResourceApi mode = ResourceApi
   { getResource ::
       mode
-        :- "resources"
+        :- "raw"
           :> CaptureAll "name" T.Text
           :> QueryParam' '[Required] "expiry" POSIXTime
           :> QueryParam' '[Required] "sign" T.Text

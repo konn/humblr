@@ -49,7 +49,6 @@ import GHC.Wasm.Web.Generated.SubtleCrypto (js_fun_importKey_KeyFormat_object_Al
 import GHC.Wasm.Web.JSON (encodeJSON)
 import GHC.Wasm.Web.ReadableStream (ReadableStream)
 import Humblr.Types (ResourceApi (..), RootAPI (..), rootApiLinks)
-import Humblr.Worker.Utils (consoleLog)
 import Language.WASM.JSVal.Convert
 import Network.Cloudflare.Worker.Binding hiding (getBinding, getEnv, getSecret)
 import Network.Cloudflare.Worker.Binding.KV (KV, KVClass)
@@ -134,7 +133,6 @@ fetchHandler = genericServe @StorageEnv ResourceApi {getResource = getResourceHa
 
 getResourceHandler :: [T.Text] -> POSIXTime -> T.Text -> Handler StorageEnv WorkerResponse
 getResourceHandler paths expiry sign = do
-  liftIO $ consoleLog "Getting Resource..."
   r2 <- Servant.getBinding "R2"
   key <- liftIO . getSignKey =<< Servant.getBinding "KV"
   liftIO $ getResourceWith r2 key GetParams {..}
