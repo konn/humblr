@@ -546,9 +546,12 @@ articlesList title as =
       , p_
           [class_ "content"]
           [ div_
-              [class_ "grid is-col-min-10"]
-              $ map (div_ [class_ "cell"] . pure . articleOverview arts)
-              $ toList payload
+              [class_ "fixed-grid has-1-cols-mobile has-2-cols-tablet has-3-cols-desktop has-3-cols-widescreen has-3-cols-fullhd"]
+              [ div_
+                  [class_ "grid is-col-min-10"]
+                  $ map (div_ [class_ "cell"] . pure . articleOverview arts)
+                  $ toList payload
+              ]
           ]
       , let backAttr =
               class_ (MS.unwords $ "pagination-previous" : ["is-disabled" | page <= 0])
@@ -631,11 +634,10 @@ articleOverview arts art@Article {..} =
                             [ div_
                                 [class_ "cell", styleInline_ "justify-content: center;"]
                                 [ figure_
-                                    [class_ "image", styleInline_ "max-width: 512px;"]
+                                    [class_ "image is-512x512"]
                                     [ img_
                                         [ src_ $ resouceUrl Medium img.url
                                         , alt_ img.name
-                                        , width_ "512px"
                                         ]
                                     ]
                                 ]
@@ -643,27 +645,27 @@ articleOverview arts art@Article {..} =
                             ]
                         | not $ null attachments
                         ]
-                      , [p_ [] [linkToArticle [text $ CM.nodeToPlainText $ fromMaybe nodes $ CM.getSummary nodes]]]
+                      ,
+                        [ p_
+                            []
+                            [ linkToArticle [text $ CM.nodeToPlainText $ fromMaybe nodes $ CM.getSummary nodes]
+                            ]
+                        , div_
+                            [class_ "tags"]
+                            [ span_ [class_ "tag"] [linkToTag FrontEndArticle tag [text tag]]
+                            | tag <- tags
+                            ]
+                        ]
                       ]
                 , nav_
                     [class_ "level"]
                     [ div_
                         [class_ "level-left"]
-                        [ div_ [class_ "field is-grouped is-grouped-multiline"] $
-                            [ div_
-                                [class_ "control"]
-                                [ div_
-                                    [class_ "tags"]
-                                    [ span_ [class_ "tag"] [linkToTag FrontEndArticle tag [text tag]]
-                                    ]
-                                ]
-                            | tag <- tags
-                            ]
+                        [ div_ [class_ "level-item"] [linkToArticle [small_ [] [fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" createdAt]]]
                         ]
                     , div_
                         [class_ "level-right"]
-                        [ div_ [class_ "level-item"] [linkToArticle [small_ [] [fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" createdAt]]]
-                        , shareButton art
+                        [ div_ [class_ "level-item"] [shareButton art]
                         ]
                     ]
                 ]

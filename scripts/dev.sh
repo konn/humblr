@@ -15,4 +15,8 @@ npx wrangler dev --port 9294 --local _build/images/src/worker.js   &
 sleep 1
 npx wrangler dev --local _build/router/src/worker.js   &
 
+sleep 2
+
+[[ -f workspace/migration-dev.yaml ]] && [[ -d workspace/gohamblr-old ]] && cabal run -- tumblr-to-sqlite +RTS -N10 -RTS -c workspace/migration-dev.yaml workspace/gohamblr-old || echo "Some upload failed"
+
 wait

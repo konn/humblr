@@ -20,7 +20,7 @@ module Humblr.Migration.Tumblr (
 ) where
 
 import Control.Applicative ((<**>))
-import Control.Concurrent.STM.TBMQueue (TBMQueue, newTBMQueue, readTBMQueue, writeTBMQueue)
+import Control.Concurrent.STM.TBMQueue (TBMQueue, closeTBMQueue, newTBMQueue, readTBMQueue, writeTBMQueue)
 import Control.Exception.Safe
 import Control.Monad
 import Control.Monad.Loops (whileJust_)
@@ -81,7 +81,9 @@ defaultMainWith opts = do
       workQueue <- atomically $ newTBMQueue 512
       faileds <- atomically TMap.new
       runReader AppEnv {..} do
-        mapM_ (atomically . writeTBMQueue workQueue) inputs
+        ( mapM_ (atomically . writeTBMQueue workQueue) inputs
+            >> atomically do closeTBMQueue workQueue
+          )
           `concurrently_` pooledMapConcurrentlyN_
             numThs
             (\workerId -> runReader Worker {..} runWorker)
