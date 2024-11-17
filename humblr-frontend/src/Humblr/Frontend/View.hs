@@ -630,20 +630,26 @@ articleOverview arts art@Article {..} =
                     [class_ "content is-size-4"]
                     $ mconcat
                       [ [ div_
-                            [class_ "grid"]
-                            [ div_
-                                [class_ "cell", styleInline_ "justify-content: center;"]
-                                [ figure_
-                                    [class_ "image is-512x512"]
+                            [class_ "content"]
+                            [ figure_
+                                [class_ "image is-4by3 is-fullwidth"]
+                                [ linkToArticle
                                     [ img_
                                         [ src_ $ resouceUrl Medium img.url
                                         , alt_ img.name
+                                        , style_ $
+                                            Map.fromList
+                                              [ ("width", "auto")
+                                              , ("height", "auto")
+                                              , ("max-width", "100%")
+                                              , ("max-height", "100%")
+                                              , ("object-fit", "cover")
+                                              ]
                                         ]
                                     ]
                                 ]
-                            | img <- attachments
                             ]
-                        | not $ null attachments
+                        | img <- take 1 attachments
                         ]
                       ,
                         [ p_
