@@ -33,7 +33,7 @@ import Data.Generics.Labels ()
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, maybeToList)
 import Data.String (fromString)
-import Data.Time (defaultTimeLocale, formatTime)
+import Data.Time (TimeZone (..), defaultTimeLocale, formatTime, utcToZonedTime)
 import GHC.IsList qualified as G
 import Humblr.CMark qualified as CM
 import Humblr.Frontend.Actions
@@ -496,7 +496,7 @@ articleView mode art@Article {..} =
                       [class_ "level-right"]
                       $ [ div_
                             [class_ "level-item"]
-                            [linkToArticle [small_ [] [text "Posted ", fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" createdAt]]]
+                            [linkToArticle [small_ [] [text "Posted ", fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S %Z" $ utcToZonedTime jstZone createdAt]]]
                         ]
                         ++ [ nav_
                               [class_ "level"]
@@ -612,6 +612,9 @@ articlesList title as =
               ]
       ]
 
+jstZone :: TimeZone
+jstZone = TimeZone {timeZoneSummerOnly = False, timeZoneName = "JST", timeZoneMinutes = 540}
+
 articleOverview :: forall arts -> (HasArticles arts) => Article -> View Action
 articleOverview arts art@Article {..} =
   let linkToArticle =
@@ -667,7 +670,7 @@ articleOverview arts art@Article {..} =
                     [class_ "level"]
                     [ div_
                         [class_ "level-left"]
-                        [ div_ [class_ "level-item"] [linkToArticle [small_ [] [fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S" createdAt]]]
+                        [ div_ [class_ "level-item"] [linkToArticle [small_ [] [fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S %Z" $ utcToZonedTime jstZone createdAt]]]
                         ]
                     , div_
                         [class_ "level-right"]
