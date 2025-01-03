@@ -64,8 +64,9 @@ import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.String (fromString)
 import Data.Text qualified as T
-import Data.Time (defaultTimeLocale, getCurrentTime)
+import Data.Time (defaultTimeLocale, getCurrentTime, utcToLocalTime)
 import Data.Time.Format (formatTime)
+import Data.Time.LocalTime (TimeZone (..))
 import Data.Vector qualified as V
 import GHC.Base (Proxy#, proxy#)
 import GHC.Generics (Generic)
@@ -205,7 +206,7 @@ updateModel (ShowNewArticle stamp) m =
       { mode =
           CreatingArticle
             MkNewArticle
-              { slug = T.pack $ formatTime defaultTimeLocale "%Y%m%d-%H-%M" stamp
+              { slug = T.pack $ formatTime defaultTimeLocale "%Y%m%d-%H-%M" $ utcToLocalTime jstZone stamp
               , fragment =
                   ArticleFragment {body = mempty, tags = mempty, newTag = "", blobURLs = mempty}
               , viewState = Edit
@@ -304,6 +305,9 @@ updateModel (AddBlobURLs urls) m =
   noEff $ m & #mode . blobURLsT <>~ urls
 updateModel (RemoveBlobURL url) m =
   noEff $ m & #mode . blobURLsT . #urls %~ OM.filter (const $ (/= url) . (.url))
+
+jstZone :: TimeZone
+jstZone = TimeZone {timeZoneSummerOnly = False, timeZoneName = "JST", timeZoneMinutes = 540}
 
 startUrl :: URI -> JSM Action
 startUrl url = do
