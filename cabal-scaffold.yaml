@@ -4,7 +4,7 @@ hpack: false
 defaults:
   template: monorepo-single
   snapshot: lts
-  noProject: true
+  project-file: false
 
 params:
   monorepo: ghc-wasm-earthly
