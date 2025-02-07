@@ -20,8 +20,8 @@ source-repository-package
   location: https://github.com/deepflowinc/effectful-extras
   tag: 11fec60ba00e63beb12cd57a96396ca84bc6d3e7
   subdir:
-    streaming-effectful
-    streaming-http-effectful
+    -- streaming-effectful
+    -- streaming-http-effectful
     effectful-lens
     path-tagged-effectful
     random-effectful
@@ -58,8 +58,3 @@ source-repository-package
     servant-auth/servant-auth-lite
     servant-auth/servant-auth-cloudflare-workers
     servant-auth/servant-auth-lite-client
-
-source-repository-package
-  type: git
-  location: https://github.com/amesgen/miso
-  tag: bb9ce9a3dd03a7c1ac945943f65955ab10a53011
