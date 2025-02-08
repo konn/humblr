@@ -55,13 +55,6 @@ jobs:
         key: ${{steps.cache-keys.outputs.dist}}
         restore-keys: ${{steps.cache-keys.outputs.dist-restore}}
 
-    - name: Install cabal-plan
-      run: |
-        wget "https://github.com/haskell-hvr/cabal-plan/releases/download/v0.6.2.0/cabal-plan-0.6.2.0-x86_64-linux.xz" -O cabal-plan.xz
-    
-        xz -d <./cabal-plan.xz >cabal-plan
-        chmod +x cabal-plan
-        sudo mv cabal-plan /usr/local/bin/
     - name: cabal configure
       run: |
         ${{env.cabal}} v2-configure --enable-benchmarks --enable-optimisation=2 --no-semaphore

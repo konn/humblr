@@ -16,12 +16,13 @@ module Humblr.Shake (rules, defaultMain) where
 
 import Control.Concurrent.STM (TMVar, atomically, newTMVarIO, putTMVar, takeTMVar)
 import Control.Lens hiding ((<.>))
-import Control.Monad (join, unless, void, (<=<))
+import Control.Monad (join, unless, void)
 import Data.Aeson qualified as A
 import Data.ByteString.Lazy qualified as LBS
 import Data.Digest.Pure.SHA (sha1, showDigest)
 import Data.Foldable (sequenceA_, traverse_)
 import Data.List (stripPrefix)
+import Data.List qualified as L
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.Text qualified as T
@@ -177,9 +178,9 @@ rules sem = do
       pure $ take 7 hash
   getWorkers <-
     ($ GetWorkers) <$> addOracleCache \GetWorkers -> do
-      need ["humblr-workers/humblr-workers.cabal"]
-      Stdout out <- commandWasm [] "cabal-plan" ["list-bins", "humblr-workers:exe:*"]
-      pure $ mapMaybe (fmap (T.unpack . NE.last) . NE.nonEmpty . T.splitOn ":" . NE.head <=< NE.nonEmpty . T.words) $ T.lines $ T.pack out
+      readFileLines "humblr-workers/humblr-workers.cabal"
+        <&> filter (L.isPrefixOf "executable")
+        <&> mapMaybe (fmap NE.last . NE.nonEmpty . words)
   getBinPath <-
     (. BinPath) <$> addOracleCache \(BinPath target) -> do
       need ["cabal-wasm.project", "cabal-wasm.project.freeze", "cabal-wasm.project.local"]
