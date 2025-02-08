@@ -63,7 +63,7 @@ jobs:
         sudo mv cabal-plan /usr/local/bin/
     - name: cabal configure
       run: |
-        ${{env.cabal}} v2-configure --enable-benchmarks --enable-optimisation=2
+        ${{env.cabal}} v2-configure --enable-benchmarks --enable-optimisation=2 --no-semaphore
         ${{env.cabal}} update
     - name: Build Workers
       run: cabal --project-file=cabal-shake.project run -- shake-humblr
