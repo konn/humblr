@@ -52,7 +52,6 @@ library
     aeson,
     bytestring,
     directory,
-    generic-lens,
     lens,
     shake,
     text,

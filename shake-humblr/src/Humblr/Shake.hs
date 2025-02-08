@@ -20,7 +20,6 @@ import Data.Aeson qualified as A
 import Data.ByteString.Lazy qualified as LBS
 import Data.Digest.Pure.SHA (sha1, showDigest)
 import Data.Foldable (sequenceA_, traverse_)
-import Data.Generics.Labels ()
 import Data.List (stripPrefix)
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (fromJust, fromMaybe, mapMaybe)
