@@ -64,14 +64,16 @@ jobs:
         path: dist-newstyle
         key: ${{steps.cache-keys.outputs.dist}}
 
-    - name: Collect binaries
+    - name: Collect Artifacts
       continue-on-error: true
-      run: bash ./ci/scripts/collect-bins.sh "artifacts.tar.zst"
+      run: |
+        cp -r _build/workers workers
+        tar cavf workers.tar.zst workers
     - name: Upload Aritracts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
-        path: artifacts.tar.zst
-        name: artifacs
+        path: workers.tar.zst
+        name: workers
         retention-days: 1
 
   fourmolu:
