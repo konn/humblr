@@ -14,6 +14,7 @@
 
 module Humblr.Shake (rules, defaultMain) where
 
+import Control.Concurrent.STM (TMVar, atomically, newTMVarIO, putTMVar, takeTMVar)
 import Control.Lens hiding ((<.>))
 import Control.Monad (join, unless, void, (<=<))
 import Data.Aeson qualified as A
@@ -38,7 +39,7 @@ ghcVersion :: String
 ghcVersion = "9.12"
 
 defaultMain :: IO ()
-defaultMain = shakeArgs shakeOptions rules
+defaultMain = shakeArgs shakeOptions . rules =<< newTMVarIO ()
 
 type ComponentName = String
 
@@ -137,8 +138,14 @@ newtype GetFileHash = GetFileHash FilePath
 
 type instance RuleResult GetFileHash = String
 
-rules :: Rules ()
-rules = do
+type Semaphore = TMVar ()
+
+withSemaphore :: Semaphore -> Action a -> Action a
+withSemaphore sem =
+  actionBracket (liftIO $ atomically $ takeTMVar sem) (liftIO . atomically . putTMVar sem) . const
+
+rules :: Semaphore -> Rules ()
+rules sem = do
   want ["all"]
   "clean" ~> do
     removeFilesAfter "_build" ["//*"]
@@ -186,7 +193,7 @@ rules = do
             _ -> []
       unless (null deps) $ void $ askOracles $ map BuildPackage deps
       need . map (pkg </>) =<< getDirectoryFiles pkg ["*.cabal", "//*.hs", "//*.lhs", "//*.hsig", "//*.js"]
-      cabal_ "build" [pkg]
+      withSemaphore sem $ cabal_ "build" [pkg]
 
   "all" ~> do
     need ["workers", "frontend"]
