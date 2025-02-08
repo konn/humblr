@@ -2,4 +2,4 @@
 
 ## Copyright
 
-2024-present (c) Hiriomi ISHII
+2025-present (c) Hiriomi ISHII

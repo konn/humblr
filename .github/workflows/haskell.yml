@@ -3,19 +3,17 @@ on:
   push: {branches: ["main"]}
   pull_request:
 
-env:
-  GHC_VER: "9.10.0.20240412"
-  CABAL: wasm32-wasi-cabal --project-file=cabal-wasm.project --with-ghc=wasm32-wasi-ghc --with-ghc-pkg=wasm32-wasi-ghc-pkg --with-hsc2hs=wasm32-wasi-hsc2hs
-
 jobs:
   build:
     name: Build WASM
-    container: ghcr.io/konn/humblr/build:9.10.0.20240412
     env:
       project-file: cabal-wasm.project
+      ghc: wasm32-wasi-9.12.1.20250206
+      cabal: cabal --project-file=cabal-wasm.project
+      CABAL_DIR: /home/runner/.cabal
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         ref: ${{github.event.pull_request.head.sha || github.sha}}
     - name: Calculate hash keys
@@ -25,47 +23,55 @@ jobs:
         script: |
           const script = require('./ci/scripts/calc-cache-keys.js')
           await script({ os: "ubuntu", plan: "cabal-wasm", path: ${{toJSON(env.project-file)}}, core, glob })
-    - name: Restore /root/.ghc-wasm/.cabal/store
-      uses: actions/cache/restore@v3
+
+    - name: Setup GHCup
+      uses: haskell/ghcup-setup@v1
+    - name: Install Booting GHC
+      run: |
+        ghcup install ghc 9.10.1
+        ghcup install cabal 3.14.1.1 --set
+    - name: Install WASM Backend
+      shell: bash
+      run: |
+        curl https://gitlab.haskell.org/haskell-wasm/ghc-wasm-meta/-/raw/master/bootstrap.sh | SKIP_GHC=1 sh
+        . ~/.ghc-wasm/env
+        ghcup config add-release-channel https://gitlab.haskell.org/haskell-wasm/ghc-wasm-meta/-/raw/master/ghcup-wasm-0.0.9.yaml
+        ghcup install ghc ${{env.ghc}} -- $CONFIGURE_ARGS
+
+    - name: Restore Cache ~/.cabal/store
+      uses: actions/cache@v4
       with:
-        path: /root/.ghc-wasm/.cabal/store
+        path: ~/.cabal/store
         key: ${{steps.cache-keys.outputs.store}}
         restore-keys: ${{steps.cache-keys.outputs.store-restore}}
-    - name: Restore dist-newstyle
-      uses: actions/cache/restore@v3
+
+    - name: Cache dist-newstyle
+      uses: actions/cache@v4
       with:
-        path: dist-newstyle
+        path: |
+          dist-newstyle
+          _build
+          .shake
         key: ${{steps.cache-keys.outputs.dist}}
         restore-keys: ${{steps.cache-keys.outputs.dist-restore}}
+
     - name: cabal configure
       run: |
-        ${{env.CABAL}} v2-configure --enable-tests --enable-benchmarks --enable-optimisation=2
-        ${{env.CABAL}} update
-    - name: Build Dependencies
-      run: | 
-        ${{env.CABAL}} build --only-dependencies all
-    - name: Save /root/.ghc-wasm/.cabal/store Cache
-      uses: actions/cache/save@v3
-      with:
-        path: /root/.ghc-wasm/.cabal/store
-        key: ${{steps.cache-keys.outputs.store}}
-    - name: Build All
-      run: | 
-        ${{env.CABAL}} build all
-    - name: Save dist-newstyle Cache
-      uses: actions/cache/save@v3
-      with:
-        path: dist-newstyle
-        key: ${{steps.cache-keys.outputs.dist}}
+        ${{env.cabal}} v2-configure --enable-benchmarks --enable-optimisation=2 --no-semaphore
+        ${{env.cabal}} update
+    - name: Build Workers
+      run: cabal --project-file=cabal-shake.project run -- shake-humblr
 
-    - name: Collect binaries
+    - name: Collect Artifacts
       continue-on-error: true
-      run: bash ./ci/scripts/collect-bins.sh "artifacts.tar.zst"
+      run: |
+        rsync -avr _build/workers --exclude '**/node_modules' workers/
+        tar cavf workers.tar.zst workers
     - name: Upload Aritracts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
-        path: artifacts.tar.zst
-        name: artifacs
+        path: workers.tar.zst
+        name: workers
         retention-days: 1
 
   fourmolu:
@@ -73,7 +79,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Note that you must checkout your code before running fourmolu/fourmolu-action
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: fourmolu/fourmolu-action@v10
         with:
           pattern: |
@@ -86,7 +92,7 @@ jobs:
     name: Cabal Check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: haskell-actions/setup@v2
       with:
         cabal-version: 3.12.1.0

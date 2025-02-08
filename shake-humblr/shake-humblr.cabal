@@ -6,7 +6,7 @@ homepage: https://github.com/konn/ghc-wasm-earthly#readme
 bug-reports: https://github.com/konn/ghc-wasm-earthly/issues
 author: Hiromi ISHII
 maintainer: konn.jinro_at_gmail.com
-copyright: (c) Hiromi ISHII 2024- present
+copyright: (c) Hiromi ISHII 2025- present
 license: BSD-3-Clause
 license-file: LICENSE
 build-type: Simple
@@ -37,18 +37,28 @@ common defaults
     -Wredundant-constraints
     -Wunused-packages
 
-  default-language: Haskell2010
+  default-language: GHC2021
   build-depends: base >=4.7 && <5
+
+library
+  import: defaults
+  hs-source-dirs: src
+  -- cabal-gild: discover src --exclude=src/**/Internal.hs --exclude=src/**/Internal/**/*.hs
+  exposed-modules: Humblr.Shake
+  -- cabal-gild: discover src --include=src/**/Internal.hs --include=src/**/Internal/**/*.hs
+  other-modules:
+  build-depends:
+    SHA,
+    aeson,
+    bytestring,
+    directory,
+    lens,
+    shake,
+    stm,
+    text,
 
 executable shake-humblr
   import: defaults
-  build-depends:
-    bytestring,
-    directory,
-    filepath,
-    shake,
-    text,
-
   hs-source-dirs: app
   main-is: Main.hs
   -- cabal-gild: discover app --exclude=app/Main.hs
@@ -57,4 +67,5 @@ executable shake-humblr
     -threaded
     -rtsopts
     -with-rtsopts=-N
-    -O2
+
+  build-depends: shake-humblr
