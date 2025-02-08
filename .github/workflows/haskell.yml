@@ -26,7 +26,9 @@ jobs:
     - name: Setup GHCup
       uses: haskell/ghcup-setup@v1
     - name: Install Booting GHC
-      run: ghcup install ghc 9.10.1
+      run: |
+        ghcup install ghc 9.10.1
+        ghcup install cabal 3.14.1.1 --set
     - name: Install WASM Backend
       shell: bash
       run: |
