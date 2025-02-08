@@ -180,7 +180,7 @@ rules = do
       Stdout out <- cabal "list-bin" ["-v0", toCabalTarget target]
       pure $ out & packed %~ T.strip
   buildPackage <-
-    (. BuildPackage) <$> addOracleCache \(BuildPackage pkg) -> do
+    (. BuildPackage) <$> addOracle \(BuildPackage pkg) -> do
       let deps = case pkg of
             "humblr-workers" -> ["humblr-frontend", "humblr-core"]
             "humblr-frontend" -> ["humblr-core"]
