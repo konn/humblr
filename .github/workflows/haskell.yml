@@ -54,8 +54,8 @@ jobs:
 
     - name: cabal configure
       run: |
-        ${{env.CABAL}} v2-configure --enable-benchmarks --enable-optimisation=2
-        ${{env.CABAL}} update
+        ${{env.cabal}} v2-configure --enable-benchmarks --enable-optimisation=2
+        ${{env.cabal}} update
     - name: Build Dependencies
       run: cabal run -- shake-humblr
     - name: Save dist-newstyle Cache
