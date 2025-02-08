@@ -43,5 +43,5 @@ defaultApp = miso \url ->
     model = initialModel
     update = updateModel
     events = defaultEvents
-    logLevel = Off
     mountPoint = Nothing
+    logLevel = Off
