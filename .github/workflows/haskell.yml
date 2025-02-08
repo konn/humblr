@@ -56,8 +56,9 @@ jobs:
       run: |
         wget "https://github.com/haskell-hvr/cabal-plan/releases/download/v0.6.2.0/cabal-plan-0.6.2.0-x86_64-linux.xz" -O cabal-plan.xz
     
-        sudo xz -d <./cabal-plan.xz >/usr/bin/cabal-plan
-        sudo chmod +x /usr/bin/cabal-plan
+        xz -d <./cabal-plan.xz >cabal-plan
+        chmod +x cabal-plan
+        mv cabal-plan /usr/local/bin/
     - name: cabal configure
       run: |
         ${{env.cabal}} v2-configure --enable-benchmarks --enable-optimisation=2
