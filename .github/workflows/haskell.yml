@@ -52,6 +52,12 @@ jobs:
         key: ${{steps.cache-keys.outputs.dist}}
         restore-keys: ${{steps.cache-keys.outputs.dist-restore}}
 
+    - name: Install cabal-plan
+      run: |
+        wget "https://github.com/haskell-hvr/cabal-plan/releases/download/v0.6.2.0/cabal-plan-0.6.2.0-x86_64-linux.xz" -O cabal-plan.xz
+    
+        sudo xz -d <./cabal-plan.xz >/usr/bin/cabal-plan
+        sudo chmod +x /usr/bin/cabal-plan
     - name: cabal configure
       run: |
         ${{env.cabal}} v2-configure --enable-benchmarks --enable-optimisation=2
@@ -81,7 +87,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Note that you must checkout your code before running fourmolu/fourmolu-action
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: fourmolu/fourmolu-action@v10
         with:
           pattern: |
@@ -94,7 +100,7 @@ jobs:
     name: Cabal Check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: haskell-actions/setup@v2
       with:
         cabal-version: 3.12.1.0
