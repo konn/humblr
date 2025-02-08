@@ -58,7 +58,7 @@ jobs:
     
         xz -d <./cabal-plan.xz >cabal-plan
         chmod +x cabal-plan
-        mv cabal-plan /usr/local/bin/
+        sudo mv cabal-plan /usr/local/bin/
     - name: cabal configure
       run: |
         ${{env.cabal}} v2-configure --enable-benchmarks --enable-optimisation=2
