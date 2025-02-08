@@ -1,4 +1,4 @@
-index-state: hackage.haskell.org 2024-10-17T03:31:31Z
+index-state: hackage.haskell.org 2025-02-07T10:59:57Z
 with-compiler: ghc-9.10.1
 constraints:
   Cabal-syntax ==3.12.0.0,
@@ -36,13 +36,13 @@ constraints:
   basement ==0.0.16,
   bifunctors ==5.6.2,
   bifunctors +tagged,
-  binary ==0.8.9.2,
+  binary installed,
   bitvec ==1.1.5.0,
   bitvec +simd,
   blaze-builder ==0.4.2.3,
   byteorder ==1.0.4,
   bytestring ==0.12.1.0,
-  cabal-gild ==1.4.0.0,
+  cabal-gild ==1.5.0.2,
   cabal-gild -pedantic,
   call-stack ==0.4.0,
   case-insensitive ==1.2.1.0,
