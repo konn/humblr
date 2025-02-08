@@ -65,7 +65,7 @@ jobs:
     - name: Collect Artifacts
       continue-on-error: true
       run: |
-        rsync -avr _build/workers --exclude '**/node_modules/**/*' workers/
+        rsync -avr _build/workers --exclude '**/node_modules' workers/
         tar cavf workers.tar.zst workers
     - name: Upload Aritracts
       uses: actions/upload-artifact@v4
