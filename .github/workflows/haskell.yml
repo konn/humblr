@@ -57,7 +57,7 @@ jobs:
         ${{env.cabal}} v2-configure --enable-benchmarks --enable-optimisation=2
         ${{env.cabal}} update
     - name: Build Workers
-      run: cabal run -- shake-humblr
+      run: cabal --project-file=cabal-shake.project run -- shake-humblr
     - name: Save dist-newstyle Cache
       uses: actions/cache/save@v3
       with:

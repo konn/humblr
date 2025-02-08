@@ -1,0 +1,5 @@
+with-compiler: ghc-9.10.1
+packages: shake-humblr/*.cabal
+multi-repl: True
+optimization: 2
+semaphore: True
