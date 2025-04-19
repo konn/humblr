@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE GADTs #-}
@@ -39,7 +40,7 @@ import Humblr.CMark qualified as CM
 import Humblr.Frontend.Actions
 import Humblr.Frontend.Types
 import Miso hiding (view)
-import Miso.String (MisoString, toMisoString)
+import Miso.String (MisoString, toMisoString, fromMisoString)
 import Miso.String qualified as MS
 import Servant.API (toUrlPiece)
 import Servant.Auth.Client ()
@@ -98,7 +99,7 @@ modalView (Share ShareInfo {title, url}) =
                     [class_ "control"]
                     [ textarea_
                         [class_ "textarea", readonly_ True, id_ shareAreaId]
-                        [text $ title <> "\n" <> toMisoString (show url)]
+                        [text $ toMisoString title <> "\n" <> toMisoString (show url)]
                     ]
                 ]
             , div_
@@ -109,7 +110,7 @@ modalView (Share ShareInfo {title, url}) =
                 ]
             ]
         ]
-    , button_ [class_ "modal-close is-large", P "aria-label" "close", onClick DismissModal] []
+    , button_ [class_ "modal-close is-large", Property "aria-label" "close", onClick DismissModal] []
     ]
 
 mainView :: Model -> [View Action]
@@ -126,7 +127,7 @@ mainView m = case m.mode of
     articlesList
       ( \cursor ->
           [ "Articles tagged with "
-          , span_ [class_ "tag is-large"] [text tagArticles.tag]
+          , span_ [class_ "tag is-large"] [text $ toMisoString tagArticles.tag]
           , " "
           ]
             ++ cursor
@@ -149,7 +150,7 @@ adminPageView =
               [ button_
                   [ class_ "button is-link"
                   , onPreventClick openNewArticle
-                  , href_ $ toUrlPiece rootApiLinks.frontend.newArticle
+                  , href_ $ toMisoString $ toUrlPiece rootApiLinks.frontend.newArticle
                   ]
                   [icon "add"]
               ]
@@ -163,7 +164,7 @@ newArticleView na =
 
 editView :: EditedArticle -> [View Action]
 editView ea@EditedArticle {..} =
-  h2_ [class_ "title"] [text "Editing ", code_ [] [text original.slug]]
+  h2_ [class_ "title"] [text "Editing ", code_ [] [text $ toMisoString original.slug]]
     : generalEditView ea
 
 generalEditView ::
@@ -175,8 +176,7 @@ generalEditView ea =
   let curSlug = ea ^. slugG
       isValidArticle =
         not (MS.null curSlug)
-          && MS.isAscii curSlug
-          && MS.all (\c -> C.isAlphaNum c || c == '-' || c == '_') curSlug
+          && MS.all (\c -> C.isAscii c && (C.isAlphaNum c || c == '-' || c == '_')) curSlug
           && not (MS.null $ ea ^. bodyL)
    in [ div_
           [class_ "content"]
@@ -246,8 +246,8 @@ generalEditView ea =
                           [class_ "control"]
                           [ button_
                               [ class_ "button is-light"
-                              , onPreventClick $ openArticle $ ea ^. slugG
-                              , href_ $ toUrlPiece $ rootApiLinks.frontend.articlePage $ ea ^. slugG
+                              , onPreventClick $ openArticle $ fromMisoString $ ea ^. slugG
+                              , href_ $ toMisoString $ toUrlPiece $ rootApiLinks.frontend.articlePage $ fromMisoString $  ea ^. slugG
                               ]
                               ["Cancel"]
                           ]
@@ -449,7 +449,7 @@ articleView mode art@Article {..} =
           FrontEndArticle ->
             a_
               [ onPreventClick $ openArticle slug
-              , href_ $ toUrlPiece $ rootApiLinks.frontend.articlePage slug
+              , href_ $ toMisoString $ toUrlPiece $ rootApiLinks.frontend.articlePage slug
               ]
           PreviewArticle -> a_ []
       tagsView =
@@ -461,7 +461,7 @@ articleView mode art@Article {..} =
                   [ span_ [class_ "tag"] [linkToTag mode tag [text tag]]
                   ]
               ]
-          | tag <- tags
+          | (toMisoString -> tag) <- tags
           ]
    in [ div_
           [class_ "box is-four-fifth"]
@@ -475,7 +475,7 @@ articleView mode art@Article {..} =
                               [class_ "container"]
                               [ figure_
                                   [class_ "image", styleInline_ "max-width: 1024px;"]
-                                  [ img_ [width_ "1024px", src_ $ resouceUrl Large img.url, alt_ img.name]
+                                  [ img_ [width_ "1024px", src_ $ toMisoString $ resouceUrl Large img.url, alt_ $ toMisoString img.name]
                                   ]
                               ]
                           ]
@@ -483,7 +483,7 @@ articleView mode art@Article {..} =
                       ]
                   | not $ null attachments
                   ]
-                    ++ [rawHtml (CM.commonmarkToHtml [] body)]
+                    ++ [rawHtml $ toMisoString (CM.commonmarkToHtml [] body)]
                 )
             ]
             <> [ nav_
@@ -523,8 +523,8 @@ shareButton art =
 linkToTag :: ArticleViewMode -> MisoString -> [View Action] -> View Action
 linkToTag FrontEndArticle tag =
   a_
-    [ onPreventClick $ openTagArticles tag Nothing
-    , href_ $ toUrlPiece $ rootApiLinks.frontend.tagArticles tag Nothing
+    [ onPreventClick $ openTagArticles (fromMisoString tag) Nothing
+    , href_ $ toMisoString $ toUrlPiece $ rootApiLinks.frontend.tagArticles (fromMisoString tag) Nothing
     ]
 linkToTag PreviewArticle _ = a_ []
 
@@ -557,7 +557,7 @@ articlesList title as =
               class_ (MS.unwords $ "pagination-previous" : ["is-disabled" | page <= 0])
                 : mconcat
                   [ [ onPreventClick $ gotoPageAction as (page - 1)
-                    , href_ $ toUrlPiece $ gotoPageLink as $ Just $ page - 1
+                    , href_ $ toMisoString $ toUrlPiece $ gotoPageLink as $ Just $ page - 1
                     ]
                   | page > 0
                   ]
@@ -565,7 +565,7 @@ articlesList title as =
               class_ (MS.unwords $ "pagination-next" : ["is-disabled" | not hasNext])
                 : mconcat
                   [ [ onPreventClick $ gotoPageAction as (page + 1)
-                    , href_ $ toUrlPiece $ gotoPageLink as $ Just $ page + 1
+                    , href_ $ toMisoString $ toUrlPiece $ gotoPageLink as $ Just $ page + 1
                     ]
                   | hasNext
                   ]
@@ -574,19 +574,19 @@ articlesList title as =
               | otherwise =
                   [ class_ "pagination-link"
                   , onPreventClick $ gotoPageAction as 0
-                  , href_ $ toUrlPiece $ gotoPageLink as Nothing
+                  , href_ $ toMisoString $ toUrlPiece $ gotoPageLink as Nothing
                   ]
             endAttr
               | page == totalPage - 1 = [class_ "pagination-link is-current"]
               | otherwise =
                   [ class_ "pagination-link"
                   , onPreventClick $ gotoPageAction as $ totalPage - 1
-                  , href_ $ toUrlPiece $ gotoPageLink as $ Just $ totalPage - 1
+                  , href_ $ toMisoString $ toUrlPiece $ gotoPageLink as $ Just $ totalPage - 1
                   ]
             totalPage = ceiling (fromIntegral @_ @Double total / 10)
             ellipsis = li_ [class_ "pagination-ellipsis"] ["…"]
          in nav_
-              [class_ "pagination is-centered", P "role" "navigation", P "aria-label" "pagenation"]
+              [class_ "pagination is-centered", Property "role" "navigation", Property "aria-label" "pagenation"]
               [ a_ backAttr [icon "arrow_back_ios"]
               , a_ nextAttr [icon "arrow_forward_ios"]
               , ul_
@@ -620,7 +620,7 @@ articleOverview arts art@Article {..} =
   let linkToArticle =
         a_
           [ onPreventClick $ articleAction arts slug
-          , href_ $ toUrlPiece $ articleLink arts slug
+          , href_ $ toMisoString $ toUrlPiece $ articleLink arts slug
           ]
       nodes = CM.commonmarkToNode [] body
    in div_
@@ -638,8 +638,8 @@ articleOverview arts art@Article {..} =
                                 [class_ "image is-4by3 is-fullwidth"]
                                 [ linkToArticle
                                     [ img_
-                                        [ src_ $ resouceUrl Medium img.url
-                                        , alt_ img.name
+                                        [ src_ $ toMisoString $ resouceUrl Medium img.url
+                                        , alt_ $ toMisoString img.name
                                         , style_ $
                                             Map.fromList
                                               [ ("width", "auto")
@@ -657,11 +657,11 @@ articleOverview arts art@Article {..} =
                       ,
                         [ p_
                             []
-                            [ linkToArticle [text $ CM.nodeToPlainText $ fromMaybe nodes $ CM.getSummary nodes]
+                            [ linkToArticle [text $ toMisoString $ CM.nodeToPlainText $ fromMaybe nodes $ CM.getSummary nodes]
                             ]
                         , div_
                             [class_ "tags"]
-                            [ span_ [class_ "tag"] [linkToTag FrontEndArticle tag [text tag]]
+                            [ span_ [class_ "tag"] [linkToTag FrontEndArticle (toMisoString tag) [text $ toMisoString tag]]
                             | tag <- tags
                             ]
                         ]
@@ -695,7 +695,7 @@ headerView m =
                     [class_ "title"]
                     [ a_
                         [ onPreventClick $ openAdminPage Nothing
-                        , href_ $ toUrlPiece $ rootApiLinks.frontend.adminHome Nothing
+                        , href_ $ toMisoString $ toUrlPiece $ rootApiLinks.frontend.adminHome Nothing
                         ]
                         ["Admin ごはんぶらー"]
                     ]
@@ -713,7 +713,7 @@ headerView m =
                     [class_ "title"]
                     [ a_
                         [ onPreventClick $ openTopPage Nothing
-                        , href_ $ toUrlPiece $ rootApiLinks.frontend.topPage Nothing
+                        , href_ $ toMisoString $ toUrlPiece $ rootApiLinks.frontend.topPage Nothing
                         ]
                         ["ごはんぶらー"]
                     ]

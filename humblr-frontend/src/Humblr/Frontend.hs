@@ -25,7 +25,8 @@ import Humblr.Frontend.Actions
 import Humblr.Frontend.Types
 import Humblr.Frontend.View (viewModel)
 import Language.Javascript.JSaddle.Runner qualified as Runner
-import Miso
+import Language.Javascript.JSaddle (JSM)
+import Miso hiding (defaultApp)
 import Servant.Auth.Client ()
 
 defaultMain :: IO ()
@@ -36,7 +37,8 @@ defaultApp = miso \url ->
   App
     { subs = [uriSub HandleUrl]
     , view = viewModel
-    , initialAction = StartWithUrl url
+    , initialAction = Just $ StartWithUrl url
+    , styles = []
     , ..
     }
   where

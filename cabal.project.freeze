@@ -149,7 +149,6 @@ constraints:
   memory ==0.18.0,
   memory +support_bytestring +support_deepseq,
   mime-types ==0.1.2.0,
-  miso -ios -jsaddle -jsstring-only -tests,
   mmorph ==1.2.0,
   monad-control ==1.0.3.1,
   mono-traversable ==1.0.17.0,

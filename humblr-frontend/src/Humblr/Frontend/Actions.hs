@@ -50,7 +50,7 @@ module Humblr.Frontend.Actions (
 import Control.Arrow ((&&&))
 import Control.Exception.Safe (Exception (..), tryAny)
 import Control.Lens hiding ((#))
-import Control.Monad (forM, forM_, guard)
+import Control.Monad (forM, forM_, guard, unless)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Maybe (MaybeT (..), hoistMaybe)
 import Data.Aeson qualified as A
@@ -77,10 +77,11 @@ import Humblr.CMark qualified as CM
 import Humblr.Frontend.Types
 import Language.Javascript.JSaddle (FromJSVal (..), getProp, isUndefined, jsf, setProp, toJSVal_aeson, val, (#))
 import Language.Javascript.JSaddle qualified as JSM
+import Language.Javascript.JSaddle (JSM)
 import Language.Javascript.JSaddle.Evaluate (eval)
 import Language.Javascript.JSaddle.Object (Object (..))
 import Miso
-import Miso.String (MisoString, ToMisoString (..))
+import Miso.String (MisoString, ToMisoString (..), fromMisoString)
 import Miso.String qualified as MisoString
 import Network.HTTP.Types (status404)
 import Servant.API (
@@ -95,126 +96,117 @@ import Servant.Links (Link)
 
 default (T.Text)
 
-updateModel :: Action -> Model -> Effect Action Model
-updateModel NoOp m = noEff m
-updateModel (ChangeUrl url) m =
-  m {mode = Idle} <# do
+updateModel :: Action -> Effect Model Action
+updateModel NoOp = pure ()
+updateModel (ChangeUrl url) = do
+  #mode .= Idle
+  scheduleIO do
     pushURI url
-    pure (HandleUrl url)
-updateModel (HandleUrl url) m = handleUrl url m
-updateModel (StartWithUrl url) m = m <# startUrl url
-updateModel (OpenAdminPage mcur) m =
-  m {mode = Idle} <# do
-    withArticles mcur $ pure . ShowAdminPage . MkAdminPage
-updateModel (ShowAdminPage adminPage) m = noEff m {mode = AdminPage adminPage}
-updateModel (OpenTopPage mcur) m =
-  m {mode = Idle} <# do
-    withArticles mcur $ pure . ShowTopPage . MkTopPage
-updateModel (ShowTopPage topPage) m = noEff m {mode = TopPage topPage}
-updateModel (OpenArticle slug) m =
-  m {mode = Idle}
-    <# if Just slug == m ^? #mode . #_ArticlePage . #slug
-      then pure NoOp
-      else withArticleSlug slug (pure . ShowArticle)
-updateModel (ShowArticle article) m = noEff m {mode = ArticlePage article}
-updateModel (SwitchEditViewState st) m =
-  noEff $ m & #mode . viewStateT .~ st
-updateModel (OpenEditArticle slug) m =
-  m {mode = Idle} <# withArticleSlug slug (pure . ShowEditArticle)
-updateModel (ShowEditArticle article) m =
-  noEff
-    m
-      { mode =
-          EditingArticle
-            EditedArticle
-              { original = article
-              , edition = toArticleEdition article
-              , viewState = Edit
-              }
-      }
-updateModel (SetEditingArticleContent f) m =
-  noEff $ m & #mode . bodyT .~ f
-updateModel (DeleteEditingTag f) m =
-  noEff $ m & #mode . tagsT %~ Seq.filter (/= f)
-updateModel AddEditingTag m
-  | MisoString.null (m ^. #mode . newTagT) = noEff m
-  | otherwise =
-      let m' =
-            m
-              & #mode . tagsT |>~ m ^. #mode . newTagT
-              & #mode . newTagT .~ ""
-       in m' <# do
-            field <- getElementById newTagInputId
-            emp <- val ("" :: T.Text)
-            setProp "value" emp $ Object field
-            pure NoOp
-updateModel SaveEditingArticle m =
-  m {mode = Idle}
-    `batchEff` [ do
-                  upd <- toArticleUpdate original.slug edition
-                  eith <-
-                    tryAny $
-                      callApi $
-                        (api.adminAPI (CloudflareToken Nothing)).putArticle
-                          original.slug
-                          upd
+    pure $ HandleUrl url
+updateModel (HandleUrl url) = handleUrl url
+updateModel (StartWithUrl url) = scheduleIO $ startUrl url
+updateModel (OpenAdminPage mcur) = do
+  #mode .= Idle
+  scheduleIO $ withArticles mcur $ pure . ShowAdminPage . MkAdminPage
+updateModel (ShowAdminPage adminPage) = #mode .= AdminPage adminPage
+updateModel (OpenTopPage mcur) = do
+  #mode .= Idle
+  scheduleIO $ withArticles mcur (pure . ShowTopPage . MkTopPage)
+updateModel (ShowTopPage topPage) = #mode .= TopPage topPage
+updateModel (OpenArticle slug) = do
+  mslug <- preuse $ #mode . #_ArticlePage . #slug
+  #mode .= Idle
+  unless (Just slug == mslug) $ scheduleIO do
+    withArticleSlug slug (pure . ShowArticle)
+updateModel (ShowArticle article) = #mode .= ArticlePage article
+updateModel (SwitchEditViewState st) = #mode . viewStateT .= st
+updateModel (OpenEditArticle slug) = do
+  #mode .= Idle
+  scheduleIO $ withArticleSlug slug (pure . ShowEditArticle)
+updateModel (ShowEditArticle article) = do
+  #mode .=
+    EditingArticle
+      EditedArticle
+        { original = article
+        , edition = toArticleEdition article
+        , viewState = Edit
+        }
+updateModel (SetEditingArticleContent f) =
+  #mode . bodyT .= f
+updateModel (DeleteEditingTag f) =
+  #mode . tagsT %= Seq.filter (/= f)
+updateModel AddEditingTag = do
+  newTags <- use $ #mode . newTagT
+  unless (MisoString.null newTags) $ do
+    #mode . tagsT |>= newTags
+    #mode . newTagT .= ""
+    scheduleIO_ do
+      field <- getElementById newTagInputId
+      emp <- val ("" :: T.Text)
+      setProp "value" emp $ Object field
+updateModel SaveEditingArticle = do
+  oldMode <- use #mode
+  #mode .= Idle
+  forM_ (oldMode ^? #_EditingArticle) $ \EditedArticle {..} -> scheduleIO do
+    upd <- toArticleUpdate (toMisoString original.slug) edition
+    eith <-
+      tryAny $
+        callApi $
+          (api.adminAPI (CloudflareToken Nothing)).putArticle
+            original.slug
+            upd
 
-                  case eith of
-                    Left err ->
-                      pure $
-                        ShowErrorNotification
-                          MkErrorMessage
-                            { title = "Could not save article " <> original.slug
-                            , message = toMisoString $ displayException err
-                            }
-                          (Just m.mode)
-                    Right NoContent -> do
-                      void $ tryAny $ generateOGP upd.attachments
-                      pure $ openArticle original.slug
-               | EditedArticle {..} <- m ^.. #mode . #_EditingArticle
-               ]
-updateModel CreateNewArticle m =
-  m {mode = Idle}
-    `batchEff` [ do
-                  seed <- toArticleSeed slug fragment
-                  eith <-
-                    tryAny $
-                      callApi $
-                        (api.adminAPI (CloudflareToken Nothing)).postArticle
-                          seed
-                  case eith of
-                    Left err ->
-                      pure $
-                        ShowErrorNotification
-                          MkErrorMessage
-                            { title = "Could not save article " <> slug
-                            , message = toMisoString $ displayException err
-                            }
-                          (Just m.mode)
-                    Right NoContent -> do
-                      void $ tryAny $ generateOGP seed.attachments
-                      pure $ openArticle slug
-               | MkNewArticle {..} <- m ^.. #mode . #_CreatingArticle
-               ]
-updateModel (SetNewTagName f) m =
-  noEff $ m & #mode . newTagT .~ f
-updateModel OpenNewArticle m =
-  m {mode = Idle} <# do ShowNewArticle <$> liftIO getCurrentTime
-updateModel (ShowNewArticle stamp) m =
-  noEff
-    m
-      { mode =
-          CreatingArticle
-            MkNewArticle
-              { slug = T.pack $ formatTime defaultTimeLocale "%Y%m%d-%H-%M" $ utcToLocalTime jstZone stamp
-              , fragment =
-                  ArticleFragment {body = mempty, tags = mempty, newTag = "", blobURLs = mempty}
-              , viewState = Edit
-              , dummyDate = stamp
+    case eith of
+      Left err -> do
+        pure $
+          ShowErrorNotification
+            MkErrorMessage
+              { title = "Could not save article " <> toMisoString original.slug
+              , message = toMisoString $ displayException err
               }
-      }
-updateModel (OpenTagArticles tag mcur) m =
-  m {mode = Idle} <# do
+            (Just oldMode)
+      Right NoContent -> do
+        void $ tryAny $ generateOGP upd.attachments
+        pure $ openArticle original.slug
+updateModel CreateNewArticle = do
+  oldMode <- use #mode
+  #mode .= Idle
+  forM_ (oldMode ^.. #_CreatingArticle) $ \MkNewArticle {..} -> scheduleIO do
+    seed <- toArticleSeed slug fragment
+    eith <-
+      tryAny $
+        callApi $
+          (api.adminAPI (CloudflareToken Nothing)).postArticle
+            seed
+    case eith of
+      Left err ->
+        pure $
+          ShowErrorNotification
+            MkErrorMessage
+              { title = "Could not save article " <> slug
+              , message = toMisoString $ displayException err
+              }
+            (Just oldMode)
+      Right NoContent -> do
+        void $ tryAny $ generateOGP seed.attachments
+        pure $ openArticle $ fromMisoString slug
+updateModel (SetNewTagName f) = #mode . newTagT .= f
+updateModel OpenNewArticle = do
+  #mode .= Idle
+  scheduleIO $ ShowNewArticle <$> liftIO getCurrentTime
+updateModel (ShowNewArticle stamp) = do
+  #mode .=
+    CreatingArticle
+      MkNewArticle
+        { slug = toMisoString $ formatTime defaultTimeLocale "%Y%m%d-%H-%M" $ utcToLocalTime jstZone stamp
+        , fragment =
+            ArticleFragment {body = mempty, tags = mempty, newTag = "", blobURLs = mempty}
+        , viewState = Edit
+        , dummyDate = stamp
+        }
+updateModel (OpenTagArticles tag mcur) = do
+  #mode .= Idle
+  scheduleIO do
     eith <- tryAny $ callApi (api.listTagArticles tag mcur)
     case eith of
       Left err ->
@@ -226,85 +218,78 @@ updateModel (OpenTagArticles tag mcur) m =
               }
             Nothing
       Right articles -> pure $ ShowTagArticles tag articles
-updateModel (ShowTagArticles tag articles) m =
-  noEff m {mode = TagArticles MkTagArticles {..}}
-updateModel (ShowErrorNotification msg mstate) m =
-  noEff $
-    m
-      & #errorMessage ?~ msg
-      & #mode %~ maybe id const mstate
-updateModel DismissError m = noEff m {errorMessage = Nothing}
-updateModel (ShowErrorPage title message) m =
-  noEff m {mode = ErrorPage MkErrorPage {..}}
-updateModel (SetEditedSlug slg) m =
-  noEff $ m & #mode . #_CreatingArticle . #slug .~ slg
-updateModel (SetFieldValue fid v) m =
-  m <# do
-    field <- getElementById fid
-    emp <- val v
-    setProp "value" emp $ Object field
-    pure NoOp
-updateModel (ShareArticle art) m =
-  m <# do
-    share <- eval ("navigator.share" :: String)
-    absent <- ghcjsPure $ isUndefined share
-    rootUri <-
-      getCurrentURI
-        <&> #uriPath .~ ""
-        <&> #uriQuery .~ ""
-        <&> #uriFragment .~ ""
-    let url =
-          rootUri {uriPath = "/" <> T.unpack (toUrlPiece $ rootApiLinks.frontend.articlePage art.slug)}
-        title = T.strip $ CM.nodeToPlainText $ (fromMaybe <$> id <*> getSummary) $ CM.commonmarkToNode [] art.body
-        shareDesc = ShareInfo {text = title, ..}
-    if absent
-      then pure $ ShowModal $ Share shareDesc
-      else do
-        shared <- toJSVal_aeson shareDesc
-        NoOp <$ (eval ("navigator" :: String) # ("share" :: String) $ shared)
-updateModel (ShowModal modal) m = noEff m {modal = Just modal}
-updateModel DismissModal m = noEff m {modal = Nothing}
-updateModel (CopyValueById eid) m =
-  m <# do
-    eith <- tryAny $ getElementById eid
-    forM_ eith $ \field -> do
-      clip <- JSM.eval ("navigator.clipboard" :: String)
-      msg <- getProp "value" (Object field)
-      void $ JSM.liftJSM $ clip JSM.# ("writeText" :: String) $ msg
-    pure NoOp
-updateModel (DeleteArticle slug) m =
-  m {mode = Idle} <# do
-    eith <- tryAny $ callApi (adminAPI.deleteArticle slug)
+updateModel (ShowTagArticles tag articles) =
+  #mode .= TagArticles MkTagArticles {..}
+updateModel (ShowErrorNotification msg mstate) = do
+  #errorMessage ?= msg
+  #mode %= maybe id const mstate
+updateModel DismissError = #errorMessage .= Nothing
+updateModel (ShowErrorPage title message) =
+  #mode .= ErrorPage MkErrorPage {..}
+updateModel (SetEditedSlug slg) =
+  #mode . #_CreatingArticle . #slug .= slg
+updateModel (SetFieldValue fid v) = scheduleIO_ do
+  field <- getElementById fid
+  emp <- val v
+  setProp "value" emp $ Object field
+updateModel (ShareArticle art) = scheduleIO do
+  share <- eval ("navigator.share" :: String)
+  absent <- JSM.ghcjsPure $ isUndefined share
+  rootUri <-
+    getURI
+      <&> #uriPath .~ ""
+      <&> #uriQuery .~ ""
+      <&> #uriFragment .~ ""
+  let url =
+        rootUri {uriPath = "/" <> T.unpack (toUrlPiece $ rootApiLinks.frontend.articlePage art.slug)}
+      title = T.strip $ CM.nodeToPlainText $ (fromMaybe <$> id <*> getSummary) $ CM.commonmarkToNode [] art.body
+      shareDesc = ShareInfo {text = title, ..}
+  if absent
+    then pure $ ShowModal $ Share shareDesc
+    else do
+      shared <- toJSVal_aeson shareDesc
+      NoOp <$ (eval ("navigator" :: String) # ("share" :: String) $ shared)
+updateModel (ShowModal modal) = #modal ?= modal
+updateModel DismissModal = #modal .= Nothing
+updateModel (CopyValueById eid) = scheduleIO_ do
+  eith <- tryAny $ getElementById eid
+  forM_ eith $ \field -> do
+    clip <- JSM.eval ("navigator.clipboard" :: String)
+    msg <- getProp "value" (Object field)
+    void $ JSM.liftJSM $ clip JSM.# ("writeText" :: String) $ msg
+updateModel (DeleteArticle slug) = do
+  #mode .= Idle
+  scheduleIO do
+    eith <- tryAny $ callApi (adminAPI.deleteArticle $ fromMisoString slug)
     case eith of
       Right NoContent -> pure $ openAdminPage Nothing
       Left err -> pure $ ShowErrorNotification (MkErrorMessage "Could not delete article" $ toMisoString $ displayException err) Nothing
-updateModel (FileChanged (ElementId eid)) m =
-  m <# do
-    eith <- tryAny $ getElementById eid
-    resl <- forM eith \file -> do
-      files <- getProp "files" (Object file)
-      numFiles <- fmap (fromMaybe 0) . fromJSVal =<< getProp "length" (Object files)
-      if numFiles <= 0
-        then pure NoOp
-        else do
-          urls <- V.generateM numFiles \i -> do
-            f <- files ^. jsf ("item" :: String) (val i)
-            mctype <- fmap (parseImageCType =<<) . fromJSVal =<< (getProp "type" $ Object f)
-            mname <- fromJSVal =<< (getProp "name" $ Object f)
-            murl <-
-              fmap (fmap TempImg) . fromJSVal
-                =<< eval ("URL" :: String) ^. jsf ("createObjectURL" :: String) f
-            forM ((,,) <$> mctype <*> murl <*> mname) \(ctype, url, name) ->
-              pure EditedAttachment {..}
+updateModel (FileChanged (ElementId eid)) = scheduleIO do
+  eith <- tryAny $ getElementById eid
+  resl <- forM eith \file -> do
+    files <- getProp "files" (Object file)
+    numFiles <- fmap (fromMaybe 0) . fromJSVal =<< getProp "length" (Object files)
+    if numFiles <= 0
+      then pure NoOp
+      else do
+        urls <- V.generateM numFiles \i -> do
+          f <- files ^. jsf ("item" :: String) (val i)
+          mctype <- fmap (parseImageCType =<<) . fromJSVal =<< (getProp "type" $ Object f)
+          mname <- fromJSVal =<< (getProp "name" $ Object f)
+          murl <-
+            fmap (fmap TempImg) . fromJSVal
+              =<< eval ("URL" :: String) ^. jsf ("createObjectURL" :: String) f
+          forM ((,,) <$> mctype <*> murl <*> mname) \(ctype, url, name) ->
+            pure EditedAttachment {..}
 
-          empStr <- val ("" :: T.Text)
-          setProp "value" empStr (Object file)
-          pure $ AddBlobURLs $ BlobURLs $ OM.fromList $ map ((.name) &&& id) $ catMaybes $ V.toList urls
-    either (const $ pure NoOp) pure resl
-updateModel (AddBlobURLs urls) m =
-  noEff $ m & #mode . blobURLsT <>~ urls
-updateModel (RemoveBlobURL url) m =
-  noEff $ m & #mode . blobURLsT . #urls %~ OM.filter (const $ (/= url) . (.url))
+        empStr <- val ("" :: T.Text)
+        setProp "value" empStr (Object file)
+        pure $ AddBlobURLs $ BlobURLs $ OM.fromList $ map ((.name) &&& id) $ catMaybes $ V.toList urls
+  either (const $ pure NoOp) pure resl
+updateModel (AddBlobURLs urls) =
+  #mode . blobURLsT <>= urls
+updateModel (RemoveBlobURL url) =
+  #mode . blobURLsT . #urls %= OM.filter (const $ (/= url) . (.url))
 
 jstZone :: TimeZone
 jstZone = TimeZone {timeZoneSummerOnly = False, timeZoneName = "JST", timeZoneMinutes = 540}
@@ -315,23 +300,24 @@ startUrl url = do
     route @(ToServantApi FrontendRoutes)
       Proxy
       (toServant starter)
-      url
+      (const url)
+      ()
   where
-    starter :: FrontendRoutes (AsRoute (JSM Action))
+    starter :: FrontendRoutes (AsRoute (() -> JSM Action))
     starter =
       FrontendRoutes
-        { articlePage = startArticle url
-        , tagArticles = const $ const $ pure $ HandleUrl url
-        , editArticle = const $ pure $ HandleUrl url
-        , newArticle = pure $ HandleUrl url
-        , adminHome = const $ pure $ HandleUrl url
-        , topPage = const $ pure $ HandleUrl url
+        { articlePage = const . startArticle url
+        , tagArticles = const $ const $ const $ pure $ HandleUrl url
+        , editArticle = const $ const $ pure $ HandleUrl url
+        , newArticle = const $ pure $ HandleUrl url
+        , adminHome = const $ const $ pure $ HandleUrl url
+        , topPage = const $ const $ pure $ HandleUrl url
         }
 
 startArticle :: URI -> T.Text -> JSM Action
 startArticle url slug = do
   marticle <- getProp "article" . Object =<< eval ("window" :: String)
-  absent <- ghcjsPure $ isUndefined marticle
+  absent <- JSM.ghcjsPure $ isUndefined marticle
   fromMaybe (HandleUrl url) <$> runMaybeT do
     guard $ not absent
     src <- MaybeT $ fromJSVal marticle
@@ -374,24 +360,23 @@ withArticleSlug slug k = do
             displayException err
     Right article -> k article
 
-handleUrl :: URI -> Model -> Effect Action Model
+handleUrl :: URI ->  Effect Model Action
 handleUrl url =
-  either (\_ m -> m <# pure (openTopPage Nothing)) id $
+  issue $ either (const $ openTopPage Nothing) id $
     route @(ToServantApi FrontendRoutes)
       Proxy
       (toServant routes)
-      url
+      (const url)
+      ()
   where
-    routes :: FrontendRoutes (AsRoute (Model -> Effect Action Model))
+    routes :: FrontendRoutes (AsRoute (() -> Action))
     routes = FrontendRoutes {..}
-    topPage mcur m = m <# pure (OpenTopPage mcur)
-    articlePage slug m =
-      m <# do
-        pure (OpenArticle slug)
-    newArticle m = m <# pure OpenNewArticle
-    editArticle slug m = m <# pure (OpenEditArticle slug)
-    tagArticles tag mcur m = m <# pure (OpenTagArticles tag mcur)
-    adminHome mcur m = m <# pure (OpenAdminPage mcur)
+    topPage mcur = const $ OpenTopPage mcur
+    articlePage slug = const $ OpenArticle slug
+    newArticle = const OpenNewArticle
+    editArticle slug = const $ OpenEditArticle slug
+    tagArticles tag mcur = const $ OpenTagArticles tag mcur
+    adminHome mcur  = const $ OpenAdminPage mcur
 
 openTopPage :: Maybe Word -> Action
 openTopPage = openEndpoint . rootApiURIs.frontend.topPage
@@ -416,7 +401,7 @@ openEndpoint = ChangeUrl
 
 generateOGP :: [Attachment] -> JSM ()
 generateOGP atts = do
-  uri <- getCurrentURI
+  uri <- getURI
   forM_ (listToMaybe atts) \att -> do
     forM_ [rootApiURIs.images.ogp, rootApiURIs.images.twitter] \ep -> do
       liftIO $ await =<< js_fetch (fromString $ show $ (ep $ T.splitOn "/" att.url) {uriAuthority = uri.uriAuthority, uriScheme = uri.uriScheme})
@@ -455,14 +440,14 @@ instance HasEditView EditedArticle where
   tagsL = #edition . #tags
   bodyL = #edition . #body
   newTagL = #edition . #newTag
-  slugMode = FixedSlug $ Getter $ #original . #slug
+  slugMode = FixedSlug $ Getter $ #original . #slug . to toMisoString
   currentArticle art =
     Article
       { updatedAt = art.original.updatedAt
-      , tags = F.toList art.edition.tags
+      , tags = map fromMisoString $ F.toList art.edition.tags
       , slug = art.original.slug
       , createdAt = art.original.createdAt
-      , body = art.edition.body
+      , body = fromMisoString art.edition.body
       , attachments = map fromEditedAttachment $ F.toList art.edition.blobURLs.urls
       }
   saveAction# _ = SaveEditingArticle
@@ -478,10 +463,10 @@ instance HasEditView NewArticle where
   currentArticle art =
     Article
       { updatedAt = art.dummyDate
-      , tags = F.toList art.fragment.tags
-      , slug = art.slug
+      , tags = map fromMisoString $ F.toList art.fragment.tags
+      , slug = fromMisoString art.slug
       , createdAt = art.dummyDate
-      , body = art.fragment.body
+      , body = fromMisoString art.fragment.body
       , attachments =
           map fromEditedAttachment $
             F.toList art.fragment.blobURLs.urls

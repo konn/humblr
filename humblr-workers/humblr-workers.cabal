@@ -60,7 +60,7 @@ library
     http-media,
     humblr-core,
     humblr-frontend,
-    lucid,
+    miso,
     safe-exceptions,
     servant-auth-cloudflare-workers,
     servant-cloudflare-workers,
