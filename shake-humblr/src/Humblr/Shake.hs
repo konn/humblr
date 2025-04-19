@@ -183,7 +183,7 @@ rules sem = do
         <&> mapMaybe (fmap NE.last . NE.nonEmpty . words)
   getBinPath <-
     (. BinPath) <$> addOracleCache \(BinPath target) -> do
-      need ["cabal-wasm.project", "cabal-wasm.project.freeze", "cabal-wasm.project.local"]
+      need ["cabal-wasm.project", "cabal-wasm.project.freeze"]
       Stdout out <- cabal "list-bin" ["-v0", toCabalTarget target]
       pure $ out & packed %~ T.strip
   buildPackage <-

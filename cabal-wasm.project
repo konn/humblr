@@ -8,18 +8,18 @@ semaphore: True
 shared: True
 project-file: cabal-wasm.project
 ignore-project: False
-with-compiler: wasm32-wasi-ghc-9.12.1.20250206
-with-hc-pkg: wasm32-wasi-ghc-pkg-9.12.1.20250206
+with-compiler: wasm32-wasi-ghc-9.12.2.20250327
+with-hc-pkg: wasm32-wasi-ghc-pkg-9.12.2.20250327
 
 package *
-  ghc-location: wasm32-wasi-ghc-9.12.1.20250206
-  ghc-pkg-location: wasm32-wasi-ghc-pkg-9.12.1.20250206
-  hsc2hs-location: wasm32-wasi-hsc2hs-9.12.1.20250206
+  ghc-location: wasm32-wasi-ghc-9.12.2.20250327
+  ghc-pkg-location: wasm32-wasi-ghc-pkg-9.12.2.20250327
+  hsc2hs-location: wasm32-wasi-hsc2hs-9.12.2.20250327
 
 program-locations
-  ghc-location: wasm32-wasi-ghc-9.12.1.20250206
-  ghc-pkg-location: wasm32-wasi-ghc-pkg-9.12.1.20250206
-  hsc2hs-location: wasm32-wasi-hsc2hs-9.12.1.20250206
+  ghc-location: wasm32-wasi-ghc-9.12.2.20250327
+  ghc-pkg-location: wasm32-wasi-ghc-pkg-9.12.2.20250327
+  hsc2hs-location: wasm32-wasi-hsc2hs-9.12.2.20250327
 
 allow-newer:
   base,
