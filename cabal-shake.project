@@ -1,4 +1,4 @@
-with-compiler: ghc-9.10.1
+with-compiler: ghc-9.12.2
 packages: shake-humblr/*.cabal
 multi-repl: True
 optimization: 2

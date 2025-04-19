@@ -19,7 +19,7 @@ extra-doc-files:
 
 source-repository head
   type: git
-  location: https://github.com/konn/ghc-wasm-earthly
+  location: https://github.com/konn/humblr
   subdir: shake-humblr
 
 common defaults
