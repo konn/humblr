@@ -4,7 +4,7 @@ packages: humblr-*/*.cabal
 jobs: $ncpus
 optimization: 2
 semaphore: True
--- Needed to build miso successfully
+-- Needed to build with Template Haskell
 shared: True
 project-file: cabal-wasm.project
 ignore-project: False
@@ -48,12 +48,6 @@ source-repository-package
   type: git
   location: https://github.com/amesgen/jsaddle-wasm
   tag: 625367899b2ce03c3252327473d4471d57d81717
-
-package reflection
-  flags: -template-haskell
-
-package QuickCheck
-  flags: -templateHaskell
 
 allow-newer:
   base,
