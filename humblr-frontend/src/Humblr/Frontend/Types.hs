@@ -94,7 +94,7 @@ import GHC.Wasm.Web.ReadableStream (fromReadableStream)
 import Humblr.Types
 import Language.Javascript.JSaddle hiding (Nullable)
 import Miso
-import Miso.String (MisoString)
+import Miso.String (MisoString, fromMisoString, toMisoString)
 import Servant.API
 import Servant.API.Cloudflare ()
 import Servant.Auth.Client (Token (..))
@@ -167,38 +167,39 @@ data ArticleFragment = ArticleFragment
   }
   deriving (Show, Eq, Generic)
 
-toArticleUpdate :: T.Text -> ArticleFragment -> JSM ArticleUpdate
+toArticleUpdate :: MisoString -> ArticleFragment -> JSM ArticleUpdate
 toArticleUpdate slug ArticleFragment {..} = do
   attachments <- toAttachments slug blobURLs
 
-  pure ArticleUpdate {tags = F.toList tags, createdAt = Nothing, updatedAt = Nothing, ..}
+  pure ArticleUpdate {tags = map fromMisoString $ F.toList tags, createdAt = Nothing, updatedAt = Nothing, body = fromMisoString body, ..}
 
-toAttachments :: T.Text -> BlobURLs -> JSM [Attachment]
+toAttachments :: MisoString -> BlobURLs -> JSM [Attachment]
 toAttachments slug blobURLs =
   forM (F.toList blobURLs.urls) \EditedAttachment {url = origUrl, ..} -> do
-    url <- case origUrl of
+    url :: T.Text <- case origUrl of
       TempImg url -> do
-        blob <- liftIO $ await =<< js_fetch (fromText url)
+        blob <- liftIO $ await =<< js_fetch (fromText $ fromMisoString url)
         src <-
           liftIO $
             nullable (pure mempty) (Q.toStrict_ . fromReadableStream)
               =<< Resp.js_get_body blob
-        newUri <- callApi $ adminAPI.postImage slug name ctype src
+        newUri <- callApi $ adminAPI.postImage (fromMisoString slug) name ctype src
         pure newUri
-      FixedImg url -> pure url
+      FixedImg url -> pure $ fromMisoString url
     pure Attachment {..}
 
-toArticleSeed :: T.Text -> ArticleFragment -> JSM ArticleSeed
+toArticleSeed :: MisoString -> ArticleFragment -> JSM ArticleSeed
 toArticleSeed slug ArticleFragment {..} = do
   attachments <- toAttachments slug blobURLs
-  pure ArticleSeed {tags = F.toList tags, updatedAt = Nothing, createdAt = Nothing, ..}
+  pure ArticleSeed {tags = map fromMisoString $ F.toList tags, updatedAt = Nothing, createdAt = Nothing, body = fromMisoString body, slug = fromMisoString slug, ..}
 
 toArticleEdition :: Article -> ArticleFragment
 toArticleEdition Article {..} =
   ArticleFragment
     { newTag = ""
-    , tags = Seq.fromList tags
+    , tags = Seq.fromList $ map toMisoString tags
     , blobURLs = BlobURLs $ OM.fromList $ map ((.name) &&& fromAttachment) attachments
+    , body = toMisoString body
     , ..
     }
 
@@ -217,14 +218,14 @@ data EditedAttachment = EditedAttachment
   deriving (Show, Eq, Generic)
 
 fromEditedAttachment :: EditedAttachment -> Attachment
-fromEditedAttachment EditedAttachment {..} = Attachment {url = unUrl, ..}
+fromEditedAttachment EditedAttachment {..} = Attachment {url = fromMisoString unUrl, ..}
   where
     unUrl = case url of
       TempImg u -> u
       FixedImg u -> u
 
 fromAttachment :: Attachment -> EditedAttachment
-fromAttachment Attachment {..} = EditedAttachment {url = FixedImg url, ..}
+fromAttachment Attachment {..} = EditedAttachment {url = FixedImg $ toMisoString url, ..}
 
 data ImageUrl
   = TempImg !MisoString
@@ -234,7 +235,7 @@ data ImageUrl
 attachmentUrl :: ImageSize -> ImageUrl -> MisoString
 attachmentUrl sz = \case
   TempImg url -> url
-  FixedImg url -> resouceUrl sz url
+  FixedImg url -> toMisoString $ resouceUrl sz $ fromMisoString url
 
 resouceUrl :: ImageSize -> T.Text -> T.Text
 resouceUrl sz name = "/" <> toUrlPiece (imageLink sz $ T.splitOn "/" name)
@@ -343,7 +344,7 @@ instance GenericMode (AsRoute a) where
 callApi :: FetchT JSM a -> JSM a
 callApi act = do
   uri <-
-    getCurrentURI
+    getURI
       <&> #uriPath .~ ""
       <&> #uriQuery .~ ""
       <&> #uriFragment .~ ""

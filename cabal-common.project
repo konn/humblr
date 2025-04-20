@@ -1,7 +1,7 @@
 constraints:
-  miso -ios -jsaddle -jsstring-only -tests,
   any.servant ==0.20.2,
-  any.servant-lucid ==0.9.0.6
+  any.servant-lucid ==0.9.0.6,
+  miso ==1.9.0.0,
 
 allow-newer:
   base,
@@ -58,3 +58,10 @@ source-repository-package
     servant-auth/servant-auth-lite
     servant-auth/servant-auth-cloudflare-workers
     servant-auth/servant-auth-lite-client
+
+source-repository-package
+  type: git
+  -- location: https://github.com/dmjio/miso
+  -- tag: 8b289e626925bf1173b8c832872f718fa9457b86
+  location: https://github.com/konn/miso
+  tag: f53691d067af473a2623125acf8aba01bf8f2407
