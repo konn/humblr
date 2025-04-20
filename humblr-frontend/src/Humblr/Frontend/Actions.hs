@@ -115,9 +115,8 @@ updateModel (OpenTopPage mcur) = do
 updateModel (ShowTopPage topPage) = #mode .= TopPage topPage
 updateModel (OpenArticle slug) = do
   mslug <- preuse $ #mode . #_ArticlePage . #slug
-  #mode .= Idle
-  unless (Just slug == mslug) $ scheduleIO do
-    withArticleSlug slug (pure . ShowArticle)
+  unless (Just slug == mslug) $
+    scheduleIO $ withArticleSlug slug (pure . ShowArticle)
 updateModel (ShowArticle article) = #mode .= ArticlePage article
 updateModel (SwitchEditViewState st) = #mode . viewStateT .= st
 updateModel (OpenEditArticle slug) = do
