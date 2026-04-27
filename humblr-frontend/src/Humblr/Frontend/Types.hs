@@ -183,7 +183,8 @@ toAttachments slug blobURLs =
           liftIO $
             nullable (pure mempty) (Q.toStrict_ . fromReadableStream)
               =<< Resp.js_get_body blob
-        newUri <- callApi $ adminAPI.postImage (fromMisoString slug) name ctype src
+        let size = fromIntegral $ BS.length src
+        newUri <- callApi $ adminAPI.postImage (fromMisoString slug) name ctype src size
         pure newUri
       FixedImg url -> pure $ fromMisoString url
     pure Attachment {..}

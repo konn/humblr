@@ -1,3 +1,4 @@
+with-compiler: ghc-9.12.4
 import: cabal-common.project
 packages: */*.cabal
 multi-repl: True
@@ -10,7 +11,7 @@ allow-newer:
 source-repository-package
   type: git
   location: https://github.com/deepflowinc/effectful-extras
-  tag: 4c982cd74e6992f14749577ab941bc93bfc40ae7
+  tag: 5052069044a9b7d31bc66190ac32636c93692216
   subdir:
     streaming-http-effectful
     effectful-lens
@@ -24,7 +25,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/deepflowinc/streaming-extras
-  tag: d4273ea4ff34cfd7ed2d464f52f65120d5893353
+  tag: 23462baaaecb2df623f7c314c45da06fa9dded8a
   subdir:
     streaming-http
     streaming-servant-orphans

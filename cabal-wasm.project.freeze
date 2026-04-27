@@ -115,7 +115,7 @@ constraints:
   lens ==5.3.3,
   lens -benchmark-uniplate -dump-splices +inlining -j +test-hunit +test-properties +test-templates +trustworthy,
   log-base ==0.12.0.1,
-  log-effectful ==1.0.1.0,
+  log-effectful ==1.0.0.0,
   lucid ==2.11.20230408,
   lucid2 ==0.0.20240424,
   megaparsec ==9.7.0,

@@ -140,7 +140,7 @@ constraints:
   libyaml -no-unicode -system-libyaml,
   libyaml-clib ==0.2.5,
   log-base ==0.12.0.1,
-  log-effectful ==1.0.1.0,
+  log-effectful ==1.0.0.0,
   log-effectful-extra ==0.1.0.0,
   lucid ==2.11.20230408,
   lucid2 ==0.0.20240424,
