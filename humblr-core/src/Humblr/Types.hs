@@ -51,6 +51,7 @@ import Data.Text qualified as T
 import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Vector qualified as V
+import Data.Word (Word64)
 import GHC.Generics (Generic)
 import GHC.Wasm.Object.Builtins (USVStringClass, toText)
 import Language.WASM.JSVal.Convert
@@ -93,9 +94,10 @@ data RootAPI mode = RootAPI
   , assets :: mode :- "assets" :> Raw
   , resources :: mode :- NamedRoutes ResourceApi
   , images :: mode :- "images" :> NamedRoutes ImagesAPI
-  -- ^
-  -- NOTE: If we include 'ImageSize' as a 'Capture'd argument,
-  -- resulting WASM binary exceeds 1000KiB...
+  {- ^
+  NOTE: If we include 'ImageSize' as a 'Capture'd argument,
+  resulting WASM binary exceeds 1000KiB...
+  -}
   , frontend :: mode :- NamedRoutes FrontendRoutes
   }
   deriving (Generic)
@@ -189,6 +191,7 @@ type PutResource meth =
     :> Capture "slug" T.Text
     :> Capture "name" T.Text
     :> Image
+    :> QueryParam' '[Strict, Required] "size" Word64
     :> Verb meth 200 '[PlainText] T.Text
 
 data User = User {email :: Maybe T.Text}

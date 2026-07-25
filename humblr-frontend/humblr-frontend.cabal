@@ -67,6 +67,8 @@ library
     servant-client-core,
     servant-client-fetch,
     servant-cloudflare-workers-core,
+    servant-miso-client,
+    servant-miso-router,
     streaming-bytestring,
     text,
     time,

@@ -24,13 +24,10 @@
 module Humblr.Frontend.View (viewModel) where
 
 import Control.Lens ((^.))
-import Data.Aeson (withObject, (.:))
-import Data.Bool (bool)
 import Data.Char qualified as C
 import Data.Foldable (toList)
 import Data.Foldable qualified as F
 import Data.Generics.Labels ()
-import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, maybeToList)
 import Data.String (fromString)
 import Data.Time (TimeZone (..), defaultTimeLocale, formatTime, utcToZonedTime)
@@ -38,11 +35,20 @@ import GHC.IsList qualified as G
 import Humblr.CMark qualified as CM
 import Humblr.Frontend.Actions
 import Humblr.Frontend.Types
-import Miso hiding (view)
-import Miso.String (MisoString, toMisoString)
+import Miso hiding (View, view)
+import Miso qualified
+import Miso.CSS qualified as CSS
+import Miso.Html.Element hiding (style_)
+import Miso.Html.Event hiding (onEnter)
+import Miso.Html.Property hiding (form_, label_)
+import Miso.JSON (withObject, (.:))
+import Miso.Property (textProp)
+import Miso.String (MisoString, fromMisoString, toMisoString)
 import Miso.String qualified as MS
 import Servant.API (toUrlPiece)
 import Servant.Auth.Client ()
+
+type View = Miso.View Model
 
 viewModel :: Model -> View Action
 viewModel m@Model {..} =
@@ -50,31 +56,18 @@ viewModel m@Model {..} =
     headerView m
       : section_ [class_ "section"] (mainView m)
       : [ div_
-            [class_ "notification is-danger", style_ $ G.fromList [("position", "absolute"), ("bottom", "12pt")]]
+            [class_ "notification is-danger", CSS.style_ $ G.fromList [("position", "absolute"), ("bottom", "12pt")]]
             [ button_ [class_ "delete", onClick DismissError] []
             , h3_ [class_ "subtitle"] [text title]
             , text message
             ]
         | MkErrorMessage {..} <- maybeToList errorMessage
         ]
-      ++ [modalView v | v <- maybeToList modal]
-      ++ [footerView]
+        <> [modalView v | v <- maybeToList modal]
+        <> [footerView]
 
--- FIXME: use 'E' to preventDefault only when the modifier key is pressed
 onPreventClick :: Action -> Attribute Action
-onPreventClick action =
-  onWithOptions
-    defaultOptions {preventDefault = True}
-    "click"
-    ( keyInfoDecoder
-        { decoder = \v -> do
-            ki <- keyInfoDecoder.decoder v
-            if ki.shiftKey || ki.ctrlKey || ki.metaKey || ki.altKey
-              then fail "Modifier key is pressed"
-              else pure ()
-        }
-    )
-    (\() -> action)
+onPreventClick = onClickPrevent
 
 modalView :: Modal -> View Action
 modalView (Share ShareInfo {title, url}) =
@@ -96,10 +89,7 @@ modalView (Share ShareInfo {title, url}) =
                 [class_ "field"]
                 [ div_
                     [class_ "control"]
-                    [ textarea_
-                        [class_ "textarea", readonly_ True, id_ shareAreaId]
-                        [text $ title <> "\n" <> toMisoString (show url)]
-                    ]
+                    [textarea_ [class_ "textarea", readonly_ True, id_ shareAreaId, value_ $ toMisoString title <> "\n" <> url]]
                 ]
             , div_
                 [class_ "field is-grouped is-grouped-right"]
@@ -109,7 +99,7 @@ modalView (Share ShareInfo {title, url}) =
                 ]
             ]
         ]
-    , button_ [class_ "modal-close is-large", P "aria-label" "close", onClick DismissModal] []
+    , button_ [class_ "modal-close is-large", Property "aria-label" "close", onClick DismissModal] []
     ]
 
 mainView :: Model -> [View Action]
@@ -126,10 +116,10 @@ mainView m = case m.mode of
     articlesList
       ( \cursor ->
           [ "Articles tagged with "
-          , span_ [class_ "tag is-large"] [text tagArticles.tag]
+          , span_ [class_ "tag is-large"] [text $ toMisoString tagArticles.tag]
           , " "
           ]
-            ++ cursor
+            <> cursor
       )
       tagArticles
   ErrorPage MkErrorPage {..} ->
@@ -149,7 +139,7 @@ adminPageView =
               [ button_
                   [ class_ "button is-link"
                   , onPreventClick openNewArticle
-                  , href_ $ toUrlPiece rootApiLinks.frontend.newArticle
+                  , href_ $ toMisoString $ toUrlPiece rootApiLinks.frontend.newArticle
                   ]
                   [icon "add"]
               ]
@@ -163,7 +153,7 @@ newArticleView na =
 
 editView :: EditedArticle -> [View Action]
 editView ea@EditedArticle {..} =
-  h2_ [class_ "title"] [text "Editing ", code_ [] [text original.slug]]
+  h2_ [class_ "title"] [text "Editing ", code_ [] [text $ toMisoString original.slug]]
     : generalEditView ea
 
 generalEditView ::
@@ -175,8 +165,7 @@ generalEditView ea =
   let curSlug = ea ^. slugG
       isValidArticle =
         not (MS.null curSlug)
-          && MS.isAscii curSlug
-          && MS.all (\c -> C.isAlphaNum c || c == '-' || c == '_') curSlug
+          && MS.all (\c -> C.isAscii c && (C.isAlphaNum c || c == '-' || c == '_')) curSlug
           && not (MS.null $ ea ^. bodyL)
    in [ div_
           [class_ "content"]
@@ -246,8 +235,8 @@ generalEditView ea =
                           [class_ "control"]
                           [ button_
                               [ class_ "button is-light"
-                              , onPreventClick $ openArticle $ ea ^. slugG
-                              , href_ $ toUrlPiece $ rootApiLinks.frontend.articlePage $ ea ^. slugG
+                              , onPreventClick $ openArticle $ fromMisoString $ ea ^. slugG
+                              , href_ $ toMisoString $ toUrlPiece $ rootApiLinks.frontend.articlePage $ fromMisoString $ ea ^. slugG
                               ]
                               ["Cancel"]
                           ]
@@ -259,7 +248,7 @@ generalEditView ea =
                                     [ class_ "button is-primary"
                                     , onClick $ saveAction state
                                     ]
-                                  else [class_ "button is-disabled", disabled_ True]
+                                  else [class_ "button is-disabled", disabled_]
                               )
                               ["Submit"]
                           ]
@@ -293,8 +282,8 @@ editMainView Edit art =
                           [ class_ "textarea is-large"
                           , rows_ "5"
                           , onInput SetEditingArticleContent
+                          , value_ $ art ^. bodyL
                           ]
-                          [text $ art ^. bodyL]
                       ]
                   ]
               ]
@@ -349,12 +338,12 @@ editMainView Edit art =
                           [ div_
                               [class_ "cell"]
                               [ figure_
-                                  [class_ "image is-128by128", styleInline_ "max-width: 256px"]
+                                  [class_ "image is-128by128", CSS.styleInline_ "max-width: 256px"]
                                   [ img_ [width_ "256px", src_ $ attachmentUrl Thumb img.url]
                                   , a_
                                       [ class_ "delete is-large"
                                       , onClick (RemoveBlobURL img.url)
-                                      , style_ $ Map.fromList [("position", "absolute"), ("top", "5pt"), ("right", "5pt")]
+                                      , CSS.styleInline_ "position: absolute; top: 5pt; right: 5pt"
                                       ]
                                       []
                                   ]
@@ -374,24 +363,27 @@ editMainView Edit art =
                       else ["is-link is-light is-disabled"]
             btnAction =
               if validTagName
-                then onClick AddEditingTag
-                else disabled_ True
-            btnAttrs = [btnCls, btnAction, onInput $ SetNewTagName . MS.strip]
+                then type_ "submit"
+                else disabled_
+            btnAttrs = [btnCls, btnAction]
             inputAttrs =
-              class_ "input"
-                : id_ newTagInputId
-                : onChange (SetNewTagName . MS.strip)
-                : onInput (SetNewTagName . MS.strip)
-                : [ onEnter AddEditingTag
-                  | validTagName
-                  ]
+              [ class_ "input"
+              , id_ newTagInputId
+              , onChange (SetNewTagName . MS.strip)
+              , onInput (SetNewTagName . MS.strip)
+              ]
          in div_
               [class_ "field is-horizontal"]
               [ div_ [class_ "field-label"] [label_ [class_ "label"] ["New Tag"]]
               , div_
                   [class_ "field-body"]
-                  [ div_
-                      [class_ "field has-addons"]
+                  [ form_
+                      [ class_ "field has-addons"
+                      , onSubmit $
+                          if validTagName
+                            then AddEditingTag
+                            else NoOp
+                      ]
                       [ div_
                           [class_ "control has-icons-left"]
                           [ input_ inputAttrs
@@ -430,13 +422,14 @@ editMainView Preview art =
   ]
 
 onChangeId :: (ElementId -> action) -> Attribute action
-onChangeId =
+onChangeId f =
   on
     "change"
     Decoder
       { decoder = withObject "target" $ \o -> ElementId <$> o .: "id"
       , decodeAt = DecodeTarget ["target"]
       }
+    (\elementId _ -> f elementId)
 
 toEditIcon :: EditViewState -> View Action
 toEditIcon Edit = icon "edit"
@@ -449,7 +442,7 @@ articleView mode art@Article {..} =
           FrontEndArticle ->
             a_
               [ onPreventClick $ openArticle slug
-              , href_ $ toUrlPiece $ rootApiLinks.frontend.articlePage slug
+              , href_ $ toMisoString $ toUrlPiece $ rootApiLinks.frontend.articlePage slug
               ]
           PreviewArticle -> a_ []
       tagsView =
@@ -461,7 +454,7 @@ articleView mode art@Article {..} =
                   [ span_ [class_ "tag"] [linkToTag mode tag [text tag]]
                   ]
               ]
-          | tag <- tags
+          | (toMisoString -> tag) <- tags
           ]
    in [ div_
           [class_ "box is-four-fifth"]
@@ -474,8 +467,8 @@ articleView mode art@Article {..} =
                           [ div_
                               [class_ "container"]
                               [ figure_
-                                  [class_ "image", styleInline_ "max-width: 1024px;"]
-                                  [ img_ [width_ "1024px", src_ $ resouceUrl Large img.url, alt_ img.name]
+                                  [class_ "image", CSS.styleInline_ "max-width: 1024px;"]
+                                  [ img_ [width_ "1024px", src_ $ toMisoString $ resouceUrl Large img.url, alt_ $ toMisoString img.name]
                                   ]
                               ]
                           ]
@@ -483,32 +476,32 @@ articleView mode art@Article {..} =
                       ]
                   | not $ null attachments
                   ]
-                    ++ [rawHtml (CM.commonmarkToHtml [] body)]
+                    <> [div_ [textProp "innerHTML" $ toMisoString (CM.commonmarkToHtml [] body)] []]
                 )
             ]
             <> [ nav_
-                  [class_ "level"]
-                  [ div_
-                      [class_ "level-left"]
-                      [ div_ [class_ "level-item"] [tagsView]
-                      ]
-                  , div_
-                      [class_ "level-right"]
-                      $ [ div_
-                            [class_ "level-item"]
-                            [linkToArticle [small_ [] [text "Posted ", fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S %Z" $ utcToZonedTime jstZone createdAt]]]
-                        ]
-                        ++ [ nav_
-                              [class_ "level"]
-                              [ div_ [class_ "level-left"] []
-                              , div_
-                                  [class_ "level-right"]
-                                  [ div_ [class_ "level-item"] [shareButton art]
-                                  ]
-                              ]
-                           | mode == FrontEndArticle
-                           ]
-                  ]
+                   [class_ "level"]
+                   [ div_
+                       [class_ "level-left"]
+                       [ div_ [class_ "level-item"] [tagsView]
+                       ]
+                   , div_
+                       [class_ "level-right"]
+                       $ [ div_
+                             [class_ "level-item"]
+                             [linkToArticle [small_ [] [text "Posted ", fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S %Z" $ utcToZonedTime jstZone createdAt]]]
+                         ]
+                         <> [ nav_
+                                [class_ "level"]
+                                [ div_ [class_ "level-left"] []
+                                , div_
+                                    [class_ "level-right"]
+                                    [ div_ [class_ "level-item"] [shareButton art]
+                                    ]
+                                ]
+                            | mode == FrontEndArticle
+                            ]
+                   ]
                ]
       ]
 
@@ -523,8 +516,8 @@ shareButton art =
 linkToTag :: ArticleViewMode -> MisoString -> [View Action] -> View Action
 linkToTag FrontEndArticle tag =
   a_
-    [ onPreventClick $ openTagArticles tag Nothing
-    , href_ $ toUrlPiece $ rootApiLinks.frontend.tagArticles tag Nothing
+    [ onPreventClick $ openTagArticles (fromMisoString tag) Nothing
+    , href_ $ toMisoString $ toUrlPiece $ rootApiLinks.frontend.tagArticles (fromMisoString tag) Nothing
     ]
 linkToTag PreviewArticle _ = a_ []
 
@@ -557,7 +550,7 @@ articlesList title as =
               class_ (MS.unwords $ "pagination-previous" : ["is-disabled" | page <= 0])
                 : mconcat
                   [ [ onPreventClick $ gotoPageAction as (page - 1)
-                    , href_ $ toUrlPiece $ gotoPageLink as $ Just $ page - 1
+                    , href_ $ toMisoString $ toUrlPiece $ gotoPageLink as $ Just $ page - 1
                     ]
                   | page > 0
                   ]
@@ -565,7 +558,7 @@ articlesList title as =
               class_ (MS.unwords $ "pagination-next" : ["is-disabled" | not hasNext])
                 : mconcat
                   [ [ onPreventClick $ gotoPageAction as (page + 1)
-                    , href_ $ toUrlPiece $ gotoPageLink as $ Just $ page + 1
+                    , href_ $ toMisoString $ toUrlPiece $ gotoPageLink as $ Just $ page + 1
                     ]
                   | hasNext
                   ]
@@ -574,19 +567,19 @@ articlesList title as =
               | otherwise =
                   [ class_ "pagination-link"
                   , onPreventClick $ gotoPageAction as 0
-                  , href_ $ toUrlPiece $ gotoPageLink as Nothing
+                  , href_ $ toMisoString $ toUrlPiece $ gotoPageLink as Nothing
                   ]
             endAttr
               | page == totalPage - 1 = [class_ "pagination-link is-current"]
               | otherwise =
                   [ class_ "pagination-link"
                   , onPreventClick $ gotoPageAction as $ totalPage - 1
-                  , href_ $ toUrlPiece $ gotoPageLink as $ Just $ totalPage - 1
+                  , href_ $ toMisoString $ toUrlPiece $ gotoPageLink as $ Just $ totalPage - 1
                   ]
             totalPage = ceiling (fromIntegral @_ @Double total / 10)
             ellipsis = li_ [class_ "pagination-ellipsis"] ["…"]
          in nav_
-              [class_ "pagination is-centered", P "role" "navigation", P "aria-label" "pagenation"]
+              [class_ "pagination is-centered", Property "role" "navigation", Property "aria-label" "pagenation"]
               [ a_ backAttr [icon "arrow_back_ios"]
               , a_ nextAttr [icon "arrow_forward_ios"]
               , ul_
@@ -620,7 +613,7 @@ articleOverview arts art@Article {..} =
   let linkToArticle =
         a_
           [ onPreventClick $ articleAction arts slug
-          , href_ $ toUrlPiece $ articleLink arts slug
+          , href_ $ toMisoString $ toUrlPiece $ articleLink arts slug
           ]
       nodes = CM.commonmarkToNode [] body
    in div_
@@ -638,16 +631,9 @@ articleOverview arts art@Article {..} =
                                 [class_ "image is-4by3 is-fullwidth"]
                                 [ linkToArticle
                                     [ img_
-                                        [ src_ $ resouceUrl Medium img.url
-                                        , alt_ img.name
-                                        , style_ $
-                                            Map.fromList
-                                              [ ("width", "auto")
-                                              , ("height", "auto")
-                                              , ("max-width", "100%")
-                                              , ("max-height", "100%")
-                                              , ("object-fit", "cover")
-                                              ]
+                                        [ src_ $ toMisoString $ resouceUrl Medium img.url
+                                        , alt_ $ toMisoString img.name
+                                        , CSS.styleInline_ "width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: cover"
                                         ]
                                     ]
                                 ]
@@ -657,11 +643,11 @@ articleOverview arts art@Article {..} =
                       ,
                         [ p_
                             []
-                            [ linkToArticle [text $ CM.nodeToPlainText $ fromMaybe nodes $ CM.getSummary nodes]
+                            [ linkToArticle [text $ toMisoString $ CM.nodeToPlainText $ fromMaybe nodes $ CM.getSummary nodes]
                             ]
                         , div_
                             [class_ "tags"]
-                            [ span_ [class_ "tag"] [linkToTag FrontEndArticle tag [text tag]]
+                            [ span_ [class_ "tag"] [linkToTag FrontEndArticle (toMisoString tag) [text $ toMisoString tag]]
                             | tag <- tags
                             ]
                         ]
@@ -695,7 +681,7 @@ headerView m =
                     [class_ "title"]
                     [ a_
                         [ onPreventClick $ openAdminPage Nothing
-                        , href_ $ toUrlPiece $ rootApiLinks.frontend.adminHome Nothing
+                        , href_ $ toMisoString $ toUrlPiece $ rootApiLinks.frontend.adminHome Nothing
                         ]
                         ["Admin ごはんぶらー"]
                     ]
@@ -713,7 +699,7 @@ headerView m =
                     [class_ "title"]
                     [ a_
                         [ onPreventClick $ openTopPage Nothing
-                        , href_ $ toUrlPiece $ rootApiLinks.frontend.topPage Nothing
+                        , href_ $ toMisoString $ toUrlPiece $ rootApiLinks.frontend.topPage Nothing
                         ]
                         ["ごはんぶらー"]
                     ]
@@ -772,6 +758,3 @@ iconLeft name =
         ]
         [text name]
     ]
-
-onEnter :: Action -> Attribute Action
-onEnter action = onKeyDown $ bool NoOp action . (== KeyCode 13)

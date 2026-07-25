@@ -42,7 +42,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Clock.POSIX (POSIXTime, getPOSIXTime)
 import Data.Vector qualified as V
-import Data.Word (Word8)
+import Data.Word (Word64, Word8)
 import GHC.Generics (Generic)
 import GHC.Wasm.Object.Builtins
 import GHC.Wasm.Web.Generated.SubtleCrypto (js_fun_importKey_KeyFormat_object_AlgorithmIdentifier_boolean_sequence_KeyUsage_Promise_any, js_fun_sign_AlgorithmIdentifier_CryptoKey_BufferSource_Promise_any)
@@ -67,7 +67,7 @@ import Network.Cloudflare.Worker.Binding.Service (
  )
 import Network.Cloudflare.Worker.Crypto (subtleCrypto)
 import Network.Cloudflare.Worker.Handler (JSHandlers)
-import Network.Cloudflare.Worker.Response (WorkerResponse)
+import Network.Cloudflare.Worker.Response (WorkerResponse, toHeaders)
 import Network.Cloudflare.Worker.Response qualified as Resp
 import Servant.Auth.Cloudflare.Workers.Internal.JWT (CryptoKey, JWSAlg (HS256), toAlogirhtmIdentifier, verifySignature)
 import Servant.Cloudflare.Workers.Generic (genericServe)
@@ -81,7 +81,7 @@ type App = ServiceM StorageEnv '[]
 
 data StorageServiceFuns = StorageServiceFuns
   { get :: GetParams -> App WorkerResponse
-  , put :: T.Text -> T.Text -> ReadableStream -> App T.Text
+  , put :: T.Text -> T.Text -> ReadableStream -> Word64 -> App T.Text
   , issueSignedURL :: SignParams -> App (Maybe T.Text)
   }
   deriving (Generic)
@@ -238,13 +238,18 @@ getResourceWith r2 key GetParams {..} = do
                 PL.. setPartialField "encodeBody" automatic
                 PL.. setPartialField "cf" empty
 
-put :: T.Text -> T.Text -> ReadableStream -> App T.Text
-put slug path body = do
+put :: T.Text -> T.Text -> ReadableStream -> Word64 -> App T.Text
+put slug path body size = do
   let name = slug <> "/" <> path
   r2 <- getBinding "R2"
+  hdr <- liftIO $ toHeaders [("Content-Length", BS8.pack $ show size)]
+  let opts =
+        newDictionary @R2.PutOptionsFields
+          PL.$ setPartialField "httpMetadata" (nonNull (inject hdr))
+
   liftIO do
     void $
       maybe (throwIO $ ResourceNotFound name) pure
         =<< await'
-        =<< R2.put r2 (TE.encodeUtf8 name) (nonNull $ inject body)
+        =<< R2.putWith r2 (TE.encodeUtf8 name) (nonNull $ inject body) opts
   pure name

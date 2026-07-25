@@ -27,6 +27,7 @@ import Data.Bifunctor qualified as Bi
 import Data.CaseInsensitive qualified as CI
 import Data.Text qualified as T
 import Data.Time.Clock.POSIX (POSIXTime)
+import Data.Word (Word64)
 import GHC.Wasm.Object.Builtins
 import GHC.Wasm.Web.ReadableStream (ReadableStream)
 import Humblr.Types
@@ -222,10 +223,10 @@ adminAPI usr =
     , postImage = putResource usr
     }
 
-putResource :: AuthResult User -> T.Text -> T.Text -> ReadableStream -> Handler HumblrEnv T.Text
-putResource user slug name body = protectIfConfigured user $ do
+putResource :: AuthResult User -> T.Text -> T.Text -> ReadableStream -> Word64 -> Handler HumblrEnv T.Text
+putResource user slug name body size = protectIfConfigured user $ do
   storage <- getBinding "Storage"
-  liftIO $ await' =<< storage.put slug name body
+  liftIO $ await' =<< storage.put slug name body size
 
 putArticle :: AuthResult User -> T.Text -> ArticleUpdate -> Handler HumblrEnv NoContent
 putArticle user slug upd = protectIfConfigured user do

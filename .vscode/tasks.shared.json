@@ -3,19 +3,172 @@
   "tasks": [
     {
       "type": "shell",
+      "command": "cabal --project-file=cabal-shake.project run -- shake-humblr",
+      "label": "humblr: build production",
+      "detail": "Build the frontend and all Cloudflare Workers",
       "group": {
         "kind": "build",
         "isDefault": true
       },
-      "command": "earthly +all && ./scripts/migrate-local-frontend.sh",
-      "label": "earthly: build",
-      "detail": "$ earthly +all"
+      "problemMatcher": []
     },
     {
       "type": "shell",
-      "command": "find _build -mindepth 3 -maxdepth 3 -name 'worker.js' -exec bash -c \"echo; echo; echo - Uploading: \\$(echo \"{}\" | cut -d/ -f2); npx wrangler deploy --minify {}\" \\; && pushd _build/database && yes y | npx wrangler  d1 migrations apply gohumblr --remote",
-      "label": "wrangler: deploy",
-      "detail": "$ wrangler deploy"
+      "command": "./scripts/dev.sh",
+      "label": "humblr: local dev",
+      "detail": "Build all artifacts, then start the local Wrangler stack",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "humblr: build production"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "type": "shell",
+      "command": "npx wrangler whoami",
+      "label": "wrangler: check authentication",
+      "detail": "Confirm the active Cloudflare account",
+      "options": {
+        "cwd": "${workspaceFolder}/_build/workers/router"
+      },
+      "problemMatcher": []
+    },
+    {
+      "type": "shell",
+      "command": "npx wrangler deploy --dry-run",
+      "label": "wrangler: dry-run database",
+      "options": {
+        "cwd": "${workspaceFolder}/_build/workers/database"
+      },
+      "problemMatcher": []
+    },
+    {
+      "type": "shell",
+      "command": "npx wrangler deploy --dry-run",
+      "label": "wrangler: dry-run storage",
+      "options": {
+        "cwd": "${workspaceFolder}/_build/workers/storage"
+      },
+      "problemMatcher": []
+    },
+    {
+      "type": "shell",
+      "command": "npx wrangler deploy --dry-run",
+      "label": "wrangler: dry-run ssr",
+      "options": {
+        "cwd": "${workspaceFolder}/_build/workers/ssr"
+      },
+      "problemMatcher": []
+    },
+    {
+      "type": "shell",
+      "command": "npx wrangler deploy --dry-run",
+      "label": "wrangler: dry-run images",
+      "options": {
+        "cwd": "${workspaceFolder}/_build/workers/images"
+      },
+      "problemMatcher": []
+    },
+    {
+      "type": "shell",
+      "command": "npx wrangler deploy --dry-run",
+      "label": "wrangler: dry-run router",
+      "options": {
+        "cwd": "${workspaceFolder}/_build/workers/router"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "wrangler: dry-run production",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "humblr: build production",
+        "wrangler: check authentication",
+        "wrangler: dry-run database",
+        "wrangler: dry-run storage",
+        "wrangler: dry-run ssr",
+        "wrangler: dry-run images",
+        "wrangler: dry-run router"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "type": "shell",
+      "command": "npx wrangler deploy --message \"${input:deployMessage}\"",
+      "label": "wrangler: deploy database",
+      "options": {
+        "cwd": "${workspaceFolder}/_build/workers/database"
+      },
+      "problemMatcher": []
+    },
+    {
+      "type": "shell",
+      "command": "npx wrangler deploy --message \"${input:deployMessage}\"",
+      "label": "wrangler: deploy storage",
+      "options": {
+        "cwd": "${workspaceFolder}/_build/workers/storage"
+      },
+      "problemMatcher": []
+    },
+    {
+      "type": "shell",
+      "command": "npx wrangler deploy --message \"${input:deployMessage}\"",
+      "label": "wrangler: deploy ssr",
+      "options": {
+        "cwd": "${workspaceFolder}/_build/workers/ssr"
+      },
+      "problemMatcher": []
+    },
+    {
+      "type": "shell",
+      "command": "npx wrangler deploy --message \"${input:deployMessage}\"",
+      "label": "wrangler: deploy images",
+      "options": {
+        "cwd": "${workspaceFolder}/_build/workers/images"
+      },
+      "problemMatcher": []
+    },
+    {
+      "type": "shell",
+      "command": "npx wrangler deploy --message \"${input:deployMessage}\"",
+      "label": "wrangler: deploy router",
+      "options": {
+        "cwd": "${workspaceFolder}/_build/workers/router"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "wrangler: deploy production",
+      "detail": "Deploy database, storage, SSR, images, then the public router",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "humblr: build production",
+        "wrangler: check authentication",
+        "wrangler: deploy database",
+        "wrangler: deploy storage",
+        "wrangler: deploy ssr",
+        "wrangler: deploy images",
+        "wrangler: deploy router"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "wrangler: build, verify, and deploy production",
+      "detail": "Build everything, dry-run every Worker, then deploy in dependency order",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "wrangler: dry-run production",
+        "wrangler: deploy production"
+      ],
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "deployMessage",
+      "type": "promptString",
+      "description": "Cloudflare deployment message",
+      "default": "Deploy humblr"
     }
   ]
 }
