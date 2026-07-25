@@ -24,7 +24,6 @@
 module Humblr.Frontend.View (viewModel) where
 
 import Control.Lens ((^.))
-import Data.Bool (bool)
 import Data.Char qualified as C
 import Data.Foldable (toList)
 import Data.Foldable qualified as F
@@ -41,7 +40,7 @@ import Miso qualified
 import Miso.CSS qualified as CSS
 import Miso.Html.Element hiding (style_)
 import Miso.Html.Event hiding (onEnter)
-import Miso.Html.Property hiding (label_)
+import Miso.Html.Property hiding (form_, label_)
 import Miso.JSON (withObject, (.:))
 import Miso.Property (textProp)
 import Miso.String (MisoString, fromMisoString, toMisoString)
@@ -364,24 +363,27 @@ editMainView Edit art =
                       else ["is-link is-light is-disabled"]
             btnAction =
               if validTagName
-                then onClick AddEditingTag
+                then type_ "submit"
                 else disabled_
-            btnAttrs = [btnCls, btnAction, onInput $ SetNewTagName . MS.strip]
+            btnAttrs = [btnCls, btnAction]
             inputAttrs =
-              class_ "input"
-                : id_ newTagInputId
-                : onChange (SetNewTagName . MS.strip)
-                : onInput (SetNewTagName . MS.strip)
-                : [ onEnter AddEditingTag
-                  | validTagName
-                  ]
+              [ class_ "input"
+              , id_ newTagInputId
+              , onChange (SetNewTagName . MS.strip)
+              , onInput (SetNewTagName . MS.strip)
+              ]
          in div_
               [class_ "field is-horizontal"]
               [ div_ [class_ "field-label"] [label_ [class_ "label"] ["New Tag"]]
               , div_
                   [class_ "field-body"]
-                  [ div_
-                      [class_ "field has-addons"]
+                  [ form_
+                      [ class_ "field has-addons"
+                      , onSubmit $
+                          if validTagName
+                            then AddEditingTag
+                            else NoOp
+                      ]
                       [ div_
                           [class_ "control has-icons-left"]
                           [ input_ inputAttrs
@@ -756,6 +758,3 @@ iconLeft name =
         ]
         [text name]
     ]
-
-onEnter :: Action -> Attribute Action
-onEnter action = onKeyDown $ bool NoOp action . (== KeyCode 13)

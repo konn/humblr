@@ -309,7 +309,7 @@ rules sem = do
         [ workerDir </> js
         | js <- ["package-lock.json", "package.json", "vitest.config.js"]
         ]
-      commandWasm_ [Cwd workerDir] "npm" ["install"]
+      commandWasm_ [Cwd workerDir] "npm" ["ci"]
 
     workersPath </> "*" <//> "*" %> \out -> do
       let origPath = joinPath $ "humblr-workers" : "data" : "worker-template" : drop 3 (splitDirectories out)
