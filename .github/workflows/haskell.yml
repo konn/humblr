@@ -8,7 +8,7 @@ jobs:
     name: Build WASM
     env:
       project-file: cabal-wasm.project
-      ghc: wasm32-wasi-9.12.1.20250206
+      ghc: wasm32-wasi-9.12.4.20260402
       cabal: cabal --project-file=cabal-wasm.project
       CABAL_DIR: /home/runner/.cabal
     runs-on: ubuntu-latest
