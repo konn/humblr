@@ -151,5 +151,5 @@ linkWithRoot root l =
       <> "/"
       <> toUrlPiece l
 
-property_ :: T.Text -> Attribute action
+property_ :: MisoString -> Attribute action
 property_ = textProp "property"
