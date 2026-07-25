@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
@@ -72,7 +73,9 @@ import Control.Arrow ((&&&))
 import Control.Lens
 import Control.Monad (forM)
 import Control.Monad.IO.Class (MonadIO (..))
-import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson (FromJSON (..), ToJSON (..), withObject, (.:))
+import Data.Aeson qualified as Aeson
+import Data.Aeson.Types (Parser)
 import Data.ByteString qualified as BS
 import Data.Foldable qualified as F
 import Data.Generics.Labels ()
@@ -92,15 +95,16 @@ import GHC.Wasm.Web.Generated.Response (ResponseClass)
 import GHC.Wasm.Web.Generated.Response qualified as Resp
 import GHC.Wasm.Web.ReadableStream (fromReadableStream)
 import Humblr.Types
-import Language.Javascript.JSaddle hiding (Nullable)
-import Miso
+import Miso hiding (Image)
+import Miso qualified
 import Miso.String (MisoString, fromMisoString, toMisoString)
-import Servant.API
+import Servant.API hiding (URI)
 import Servant.API.Cloudflare ()
 import Servant.Auth.Client (Token (..))
 import Servant.Client.Core
 import Servant.Client.FetchAPI
 import Servant.Client.Generic (genericClient)
+import Servant.Miso.Router (RouteT)
 import Streaming.ByteString qualified as Q
 
 initialModel :: Model
@@ -167,13 +171,14 @@ data ArticleFragment = ArticleFragment
   }
   deriving (Show, Eq, Generic)
 
-toArticleUpdate :: MisoString -> ArticleFragment -> JSM ArticleUpdate
+toArticleUpdate :: MisoString -> ArticleFragment -> IO ArticleUpdate
 toArticleUpdate slug ArticleFragment {..} = do
   attachments <- toAttachments slug blobURLs
 
   pure ArticleUpdate {tags = map fromMisoString $ F.toList tags, createdAt = Nothing, updatedAt = Nothing, body = fromMisoString body, ..}
 
-toAttachments :: MisoString -> BlobURLs -> JSM [Attachment]
+toAttachments :: MisoString -> BlobURLs -> IO [Attachment]
+#ifdef wasm32_HOST_ARCH
 toAttachments slug blobURLs =
   forM (F.toList blobURLs.urls) \EditedAttachment {url = origUrl, ..} -> do
     url :: T.Text <- case origUrl of
@@ -188,8 +193,15 @@ toAttachments slug blobURLs =
         pure newUri
       FixedImg url -> pure $ fromMisoString url
     pure Attachment {..}
+#else
+toAttachments _ blobURLs =
+  forM (F.toList blobURLs.urls) \EditedAttachment {url = origUrl, ..} ->
+    case origUrl of
+      TempImg _ -> fail "Temporary image uploads require the WASM frontend"
+      FixedImg url -> pure Attachment {url = fromMisoString url, ..}
+#endif
 
-toArticleSeed :: MisoString -> ArticleFragment -> JSM ArticleSeed
+toArticleSeed :: MisoString -> ArticleFragment -> IO ArticleSeed
 toArticleSeed slug ArticleFragment {..} = do
   attachments <- toAttachments slug blobURLs
   pure ArticleSeed {tags = map fromMisoString $ F.toList tags, updatedAt = Nothing, createdAt = Nothing, body = fromMisoString body, slug = fromMisoString slug, ..}
@@ -263,9 +275,24 @@ data Model = Model
   }
   deriving (Show, Generic, Eq)
 
-data ShareInfo = ShareInfo {url :: !URI, title :: !T.Text, text :: !T.Text}
+data ShareInfo = ShareInfo {url :: !MisoString, title :: !T.Text, text :: !T.Text}
   deriving (Show, Generic, Eq)
-  deriving anyclass (ToJSON, FromJSON)
+  deriving anyclass (Miso.ToJSVal)
+
+instance ToJSON ShareInfo where
+  toJSON ShareInfo {..} =
+    Aeson.object
+      [ "url" Aeson..= (fromMisoString url :: T.Text)
+      , "title" Aeson..= title
+      , "text" Aeson..= text
+      ]
+
+instance FromJSON ShareInfo where
+  parseJSON = withObject "ShareInfo" \o ->
+    ShareInfo
+      <$> (toMisoString <$> (o .: "url" :: Parser T.Text))
+      <*> o .: "title"
+      <*> o .: "text"
 
 data Modal = Share !ShareInfo
   deriving (Show, Generic, Eq)
@@ -330,10 +357,10 @@ instance (HasClient m ep) => HasClient m (Image :> ep) where
         (imageCType ct)
         req
 
-api :: RestApi (AsClientT (FetchT JSM))
+api :: RestApi (AsClientT (FetchT IO))
 api = (genericClient @RootAPI).apiRoutes
 
-adminAPI :: AdminAPI (AsClientT (FetchT JSM))
+adminAPI :: AdminAPI (AsClientT (FetchT IO))
 adminAPI = api.adminAPI (CloudflareToken Nothing)
 
 type AsRoute :: Type -> Type
@@ -342,15 +369,15 @@ data AsRoute a
 instance GenericMode (AsRoute a) where
   type AsRoute a :- xs = RouteT xs a
 
-callApi :: FetchT JSM a -> JSM a
+callApi :: FetchT IO a -> IO a
+#ifdef wasm32_HOST_ARCH
 callApi act = do
-  uri <-
-    getURI
-      <&> #uriPath .~ ""
-      <&> #uriQuery .~ ""
-      <&> #uriFragment .~ ""
-  baseUrl <- parseBaseUrl $ show uri
+  origin <- T.unpack . toText <$> js_location_origin
+  baseUrl <- parseBaseUrl origin
   runFetch baseUrl act
+#else
+callApi _ = fail "The legacy FetchT client is only available in the WASM frontend"
+#endif
 
 newTagInputId :: MisoString
 newTagInputId = "new-tag-input"
@@ -375,3 +402,6 @@ foreign import javascript safe "fetch($1)"
   js_fetch ::
     USVString ->
     IO (Promise ResponseClass)
+
+foreign import javascript unsafe "window.location.origin"
+  js_location_origin :: IO USVString

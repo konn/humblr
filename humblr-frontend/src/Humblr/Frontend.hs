@@ -24,26 +24,16 @@ import Data.Generics.Labels ()
 import Humblr.Frontend.Actions
 import Humblr.Frontend.Types
 import Humblr.Frontend.View (viewModel)
-import Language.Javascript.JSaddle.Runner qualified as Runner
-import Language.Javascript.JSaddle (JSM)
-import Miso hiding (defaultApp)
+import Miso hiding (view)
 import Servant.Auth.Client ()
 
 defaultMain :: IO ()
-defaultMain = Runner.run defaultApp
+defaultMain = defaultApp
 
-defaultApp :: JSM ()
-defaultApp = miso \url ->
-  App
-    { subs = [uriSub HandleUrl]
-    , view = viewModel
-    , initialAction = Just $ StartWithUrl url
-    , styles = []
-    , ..
-    }
-  where
-    model = initialModel
-    update = updateModel
-    events = defaultEvents
-    mountPoint = Nothing
-    logLevel = Off
+defaultApp :: IO ()
+defaultApp =
+  miso defaultEvents \url ->
+    (component initialModel updateModel $ \() -> viewModel)
+      { subs = [uriSub HandleUrl]
+      , mount = Just $ StartWithUrl url
+      }

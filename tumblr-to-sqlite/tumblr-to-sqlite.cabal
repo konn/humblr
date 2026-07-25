@@ -67,7 +67,7 @@ library
     path,
     path-tagged,
     path-tagged-effectful,
-    random-effectful,
+    random,
     safe-exceptions,
     scalpel,
     servant,

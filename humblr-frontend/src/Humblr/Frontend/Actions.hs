@@ -1,5 +1,8 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ImpredicativeTypes #-}
@@ -18,6 +21,7 @@
 {-# LANGUAGE StandaloneKindSignatures #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
@@ -54,10 +58,13 @@ import Control.Monad (forM, forM_, guard, unless)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Maybe (MaybeT (..), hoistMaybe)
 import Data.Aeson qualified as A
+import Data.Aeson.Key qualified as AKey
+import Data.Aeson.KeyMap qualified as AKeyMap
 import Data.Foldable qualified as F
 import Data.Functor (void)
 import Data.Generics.Labels ()
 import Data.Map.Ordered.Strict qualified as OM
+import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
 import Data.Proxy (Proxy (..))
 import Data.Sequence (Seq)
@@ -75,56 +82,61 @@ import GHC.Wasm.Web.Generated.Response (ResponseClass)
 import Humblr.CMark (getSummary)
 import Humblr.CMark qualified as CM
 import Humblr.Frontend.Types
-import Language.Javascript.JSaddle (FromJSVal (..), getProp, isUndefined, jsf, setProp, toJSVal_aeson, val, (#))
-import Language.Javascript.JSaddle qualified as JSM
-import Language.Javascript.JSaddle (JSM)
-import Language.Javascript.JSaddle.Evaluate (eval)
-import Language.Javascript.JSaddle.Object (Object (..))
 import Miso
+import Miso.JSON qualified as MisoJSON
+import Miso.Router qualified as Miso
 import Miso.String (MisoString, ToMisoString (..), fromMisoString)
 import Miso.String qualified as MisoString
-import Network.HTTP.Types (status404)
 import Servant.API (
+  Capture,
+  Get,
+  JSON,
   NoContent (NoContent),
+  QueryParam,
   ToServantApi,
   toServant,
   toUrlPiece,
+  (:<|>) (..),
+  type (:>),
  )
+import Servant.API qualified as Servant
 import Servant.Auth.Client (Token (CloudflareToken))
 import Servant.Client.FetchAPI
 import Servant.Links (Link)
+import Servant.Miso.Client qualified as MisoClient
+import Servant.Miso.Router qualified as Router
 
 default (T.Text)
 
-updateModel :: Action -> Effect Model Action
+updateModel :: Action -> Effect ROOT () Model Action
 updateModel NoOp = pure ()
 updateModel (ChangeUrl url) = do
   #mode .= Idle
-  scheduleIO do
+  io do
     pushURI url
     pure $ HandleUrl url
 updateModel (HandleUrl url) = handleUrl url
-updateModel (StartWithUrl url) = scheduleIO $ startUrl url
+updateModel (StartWithUrl url) = io $ startUrl url
 updateModel (OpenAdminPage mcur) = do
   #mode .= Idle
-  scheduleIO $ withArticles mcur $ pure . ShowAdminPage . MkAdminPage
+  withArticles mcur $ ShowAdminPage . MkAdminPage
 updateModel (ShowAdminPage adminPage) = #mode .= AdminPage adminPage
 updateModel (OpenTopPage mcur) = do
   #mode .= Idle
-  scheduleIO $ withArticles mcur (pure . ShowTopPage . MkTopPage)
+  withArticles mcur $ ShowTopPage . MkTopPage
 updateModel (ShowTopPage topPage) = #mode .= TopPage topPage
 updateModel (OpenArticle slug) = do
   mslug <- preuse $ #mode . #_ArticlePage . #slug
   unless (Just slug == mslug) $
-    scheduleIO $ withArticleSlug slug (pure . ShowArticle)
+    withArticleSlug slug ShowArticle
 updateModel (ShowArticle article) = #mode .= ArticlePage article
 updateModel (SwitchEditViewState st) = #mode . viewStateT .= st
 updateModel (OpenEditArticle slug) = do
   #mode .= Idle
-  scheduleIO $ withArticleSlug slug (pure . ShowEditArticle)
+  withArticleSlug slug ShowEditArticle
 updateModel (ShowEditArticle article) = do
-  #mode .=
-    EditingArticle
+  #mode
+    .= EditingArticle
       EditedArticle
         { original = article
         , edition = toArticleEdition article
@@ -139,14 +151,13 @@ updateModel AddEditingTag = do
   unless (MisoString.null newTags) $ do
     #mode . tagsT |>= newTags
     #mode . newTagT .= ""
-    scheduleIO_ do
+    io_ do
       field <- getElementById newTagInputId
-      emp <- val ("" :: T.Text)
-      setProp "value" emp $ Object field
+      setProp "value" ("" :: MisoString) $ Object field
 updateModel SaveEditingArticle = do
   oldMode <- use #mode
   #mode .= Idle
-  forM_ (oldMode ^? #_EditingArticle) $ \EditedArticle {..} -> scheduleIO do
+  forM_ (oldMode ^? #_EditingArticle) $ \EditedArticle {..} -> io do
     upd <- toArticleUpdate (toMisoString original.slug) edition
     eith <-
       tryAny $
@@ -170,7 +181,7 @@ updateModel SaveEditingArticle = do
 updateModel CreateNewArticle = do
   oldMode <- use #mode
   #mode .= Idle
-  forM_ (oldMode ^.. #_CreatingArticle) $ \MkNewArticle {..} -> scheduleIO do
+  forM_ (oldMode ^.. #_CreatingArticle) $ \MkNewArticle {..} -> io do
     seed <- toArticleSeed slug fragment
     eith <-
       tryAny $
@@ -192,10 +203,10 @@ updateModel CreateNewArticle = do
 updateModel (SetNewTagName f) = #mode . newTagT .= f
 updateModel OpenNewArticle = do
   #mode .= Idle
-  scheduleIO $ ShowNewArticle <$> liftIO getCurrentTime
+  io $ ShowNewArticle <$> liftIO getCurrentTime
 updateModel (ShowNewArticle stamp) = do
-  #mode .=
-    CreatingArticle
+  #mode
+    .= CreatingArticle
       MkNewArticle
         { slug = toMisoString $ formatTime defaultTimeLocale "%Y%m%d-%H-%M" $ utcToLocalTime jstZone stamp
         , fragment =
@@ -205,7 +216,7 @@ updateModel (ShowNewArticle stamp) = do
         }
 updateModel (OpenTagArticles tag mcur) = do
   #mode .= Idle
-  scheduleIO do
+  io do
     eith <- tryAny $ callApi (api.listTagArticles tag mcur)
     case eith of
       Left err ->
@@ -227,62 +238,61 @@ updateModel (ShowErrorPage title message) =
   #mode .= ErrorPage MkErrorPage {..}
 updateModel (SetEditedSlug slg) =
   #mode . #_CreatingArticle . #slug .= slg
-updateModel (SetFieldValue fid v) = scheduleIO_ do
+updateModel (SetFieldValue fid v) = io_ do
   field <- getElementById fid
-  emp <- val v
-  setProp "value" emp $ Object field
-updateModel (ShareArticle art) = scheduleIO do
-  share <- eval ("navigator.share" :: String)
-  absent <- JSM.ghcjsPure $ isUndefined share
+  setProp "value" v $ Object field
+updateModel (ShareArticle art) = io do
+  share <- eval "navigator.share"
+  absent <- isUndefined share
   rootUri <-
     getURI
       <&> #uriPath .~ ""
-      <&> #uriQuery .~ ""
+      <&> #uriQueryString .~ mempty
       <&> #uriFragment .~ ""
   let url =
-        rootUri {uriPath = "/" <> T.unpack (toUrlPiece $ rootApiLinks.frontend.articlePage art.slug)}
+        toMisoString $
+          rootUri {uriPath = toMisoString $ toUrlPiece $ rootApiLinks.frontend.articlePage art.slug}
       title = T.strip $ CM.nodeToPlainText $ (fromMaybe <$> id <*> getSummary) $ CM.commonmarkToNode [] art.body
       shareDesc = ShareInfo {text = title, ..}
   if absent
     then pure $ ShowModal $ Share shareDesc
     else do
-      shared <- toJSVal_aeson shareDesc
-      NoOp <$ (eval ("navigator" :: String) # ("share" :: String) $ shared)
+      shared <- toJSVal shareDesc
+      navigator <- eval "navigator"
+      NoOp <$ (navigator # "share" $ shared)
 updateModel (ShowModal modal) = #modal ?= modal
 updateModel DismissModal = #modal .= Nothing
-updateModel (CopyValueById eid) = scheduleIO_ do
+updateModel (CopyValueById eid) = io_ do
   eith <- tryAny $ getElementById eid
   forM_ eith $ \field -> do
-    clip <- JSM.eval ("navigator.clipboard" :: String)
-    msg <- getProp "value" (Object field)
-    void $ JSM.liftJSM $ clip JSM.# ("writeText" :: String) $ msg
+    clip <- eval "navigator.clipboard"
+    msg <- getProp "value" field
+    void $ clip # "writeText" $ msg
 updateModel (DeleteArticle slug) = do
   #mode .= Idle
-  scheduleIO do
+  io do
     eith <- tryAny $ callApi (adminAPI.deleteArticle $ fromMisoString slug)
     case eith of
       Right NoContent -> pure $ openAdminPage Nothing
       Left err -> pure $ ShowErrorNotification (MkErrorMessage "Could not delete article" $ toMisoString $ displayException err) Nothing
-updateModel (FileChanged (ElementId eid)) = scheduleIO do
+updateModel (FileChanged (ElementId eid)) = io do
   eith <- tryAny $ getElementById eid
   resl <- forM eith \file -> do
-    files <- getProp "files" (Object file)
-    numFiles <- fmap (fromMaybe 0) . fromJSVal =<< getProp "length" (Object files)
+    files <- getProp "files" file
+    numFiles <- fmap (fromMaybe 0) . fromJSVal =<< getProp "length" files
     if numFiles <= 0
       then pure NoOp
       else do
         urls <- V.generateM numFiles \i -> do
-          f <- files ^. jsf ("item" :: String) (val i)
-          mctype <- fmap (parseImageCType =<<) . fromJSVal =<< (getProp "type" $ Object f)
-          mname <- fromJSVal =<< (getProp "name" $ Object f)
-          murl <-
-            fmap (fmap TempImg) . fromJSVal
-              =<< eval ("URL" :: String) ^. jsf ("createObjectURL" :: String) f
+          f <- files # "item" $ i
+          mctype <- fmap (parseImageCType =<<) . fromJSVal =<< getProp "type" f
+          mname <- fromJSVal =<< getProp "name" f
+          urlApi <- eval "URL"
+          murl <- fmap (fmap TempImg) . fromJSVal =<< (urlApi # "createObjectURL" $ f)
           forM ((,,) <$> mctype <*> murl <*> mname) \(ctype, url, name) ->
             pure EditedAttachment {..}
 
-        empStr <- val ("" :: T.Text)
-        setProp "value" empStr (Object file)
+        setProp "value" ("" :: MisoString) $ Object file
         pure $ AddBlobURLs $ BlobURLs $ OM.fromList $ map ((.name) &&& id) $ catMaybes $ V.toList urls
   either (const $ pure NoOp) pure resl
 updateModel (AddBlobURLs urls) =
@@ -293,16 +303,16 @@ updateModel (RemoveBlobURL url) =
 jstZone :: TimeZone
 jstZone = TimeZone {timeZoneSummerOnly = False, timeZoneName = "JST", timeZoneMinutes = 540}
 
-startUrl :: URI -> JSM Action
-startUrl url = do
+startUrl :: URI -> IO Action
+startUrl url =
   either (const $ pure $ HandleUrl url) id $
-    route @(ToServantApi FrontendRoutes)
+    Router.route @(ToServantApi FrontendRoutes)
       Proxy
       (toServant starter)
       (const url)
       ()
   where
-    starter :: FrontendRoutes (AsRoute (() -> JSM Action))
+    starter :: FrontendRoutes (AsRoute (() -> IO Action))
     starter =
       FrontendRoutes
         { articlePage = const . startArticle url
@@ -313,10 +323,10 @@ startUrl url = do
         , topPage = const $ const $ pure $ HandleUrl url
         }
 
-startArticle :: URI -> T.Text -> JSM Action
+startArticle :: URI -> T.Text -> IO Action
 startArticle url slug = do
-  marticle <- getProp "article" . Object =<< eval ("window" :: String)
-  absent <- JSM.ghcjsPure $ isUndefined marticle
+  marticle <- getProp "article" =<< eval "window"
+  absent <- isUndefined marticle
   fromMaybe (HandleUrl url) <$> runMaybeT do
     guard $ not absent
     src <- MaybeT $ fromJSVal marticle
@@ -324,49 +334,78 @@ startArticle url slug = do
     guard $ art.slug == slug
     pure $ ShowArticle art
 
-withArticles :: Maybe Word -> (Paged Article -> JSM Action) -> JSM Action
-withArticles mcur k = do
-  eith <- tryAny $ callApi (api.listArticles mcur)
-  case eith of
-    Left err ->
-      pure $
+type ArticleReadAPI =
+  "articles"
+    :> QueryParam "page" Word
+    :> Get '[JSON] (ViaAeson (Paged Article))
+    :<|> "articles"
+      :> Capture "slug" T.Text
+      :> Get '[JSON] (ViaAeson Article)
+
+newtype ViaAeson a = ViaAeson {unViaAeson :: a}
+
+instance (A.FromJSON a) => MisoJSON.FromJSON (ViaAeson a) where
+  parseJSON value =
+    case A.fromJSON $ toAesonValue value of
+      A.Error err -> fail err
+      A.Success result -> pure $ ViaAeson result
+
+toAesonValue :: MisoJSON.Value -> A.Value
+toAesonValue = \case
+  MisoJSON.Number value -> A.Number $ realToFrac value
+  MisoJSON.Bool value -> A.Bool value
+  MisoJSON.String value -> A.String $ fromMisoString value
+  MisoJSON.Array values -> A.Array $ V.fromList $ map toAesonValue values
+  MisoJSON.Object values ->
+    A.Object $
+      AKeyMap.fromList
+        [ (AKey.fromText $ fromMisoString key, toAesonValue value)
+        | (key, value) <- Map.toList values
+        ]
+  MisoJSON.Null -> A.Null
+
+listArticlesClient
+  :<|> getArticleClient =
+    MisoClient.toClient "/api" (Proxy @ArticleReadAPI)
+
+withArticles :: Maybe Word -> (Paged Article -> Action) -> Effect ROOT () Model Action
+withArticles mcur k = withSink \sink ->
+  listArticlesClient
+    mcur
+    (sink . k . (.unViaAeson) . (.body))
+    \resp ->
+      sink $
         ShowErrorNotification
           MkErrorMessage
             { title = "Could not Retrieve Articles!"
-            , message = toMisoString $ displayException err
+            , message = fromMaybe "Request failed" resp.errorMessage
             }
           Nothing
-    Right articles -> k articles
 
-withArticleSlug :: T.Text -> (Article -> JSM Action) -> JSM Action
-withArticleSlug slug k = do
-  eith <- tryAny $ callApi (api.getArticle slug)
-  case eith of
-    Left (fromException -> Just (FailureResponse _req resp))
-      | resp.responseStatusCode == status404 ->
-          pure $ ShowErrorPage "Not Found" $ "The article " <> toMisoString slug <> " was not found."
-      | otherwise -> do
-          pure $
+withArticleSlug :: T.Text -> (Article -> Action) -> Effect ROOT () Model Action
+withArticleSlug slug k = withSink \sink ->
+  getArticleClient
+    slug
+    (sink . k . (.unViaAeson) . (.body))
+    \resp ->
+      sink $
+        if resp.status == Just 404
+          then ShowErrorPage "Not Found" $ "The article " <> toMisoString slug <> " was not found."
+          else
             ShowErrorPage "Internal Server Error" $
               "Failed to retrieve the article "
                 <> toMisoString slug
-                <> ": "
-                <> toMisoString (show resp.responseStatusCode)
-    Left err -> do
-      pure $
-        ShowErrorPage "Internal Server Error" $
-          toMisoString $
-            displayException err
-    Right article -> k article
+                <> maybe "" ((": " <>) . toMisoString . show) resp.status
 
-handleUrl :: URI ->  Effect Model Action
+handleUrl :: URI -> Effect ROOT () Model Action
 handleUrl url =
-  issue $ either (const $ openTopPage Nothing) id $
-    route @(ToServantApi FrontendRoutes)
-      Proxy
-      (toServant routes)
-      (const url)
-      ()
+  issue $
+    either (const $ openTopPage Nothing) id $
+      Router.route @(ToServantApi FrontendRoutes)
+        Proxy
+        (toServant routes)
+        (const url)
+        ()
   where
     routes :: FrontendRoutes (AsRoute (() -> Action))
     routes = FrontendRoutes {..}
@@ -375,7 +414,7 @@ handleUrl url =
     newArticle = const OpenNewArticle
     editArticle slug = const $ OpenEditArticle slug
     tagArticles tag mcur = const $ OpenTagArticles tag mcur
-    adminHome mcur  = const $ OpenAdminPage mcur
+    adminHome mcur = const $ OpenAdminPage mcur
 
 openTopPage :: Maybe Word -> Action
 openTopPage = openEndpoint . rootApiURIs.frontend.topPage
@@ -395,16 +434,23 @@ openTagArticles tag = openEndpoint . rootApiURIs.frontend.tagArticles tag
 openNewArticle :: Action
 openNewArticle = openEndpoint rootApiURIs.frontend.newArticle
 
-openEndpoint :: URI -> Action
-openEndpoint = ChangeUrl
+openEndpoint :: Servant.URI -> Action
+openEndpoint uri =
+  ChangeUrl $
+    either (const emptyURI) id $
+      Miso.parseURI $
+        "/" <> toMisoString (show uri)
 
-generateOGP :: [Attachment] -> JSM ()
+generateOGP :: [Attachment] -> IO ()
+#ifdef wasm32_HOST_ARCH
 generateOGP atts = do
-  uri <- getURI
   forM_ (listToMaybe atts) \att -> do
     forM_ [rootApiURIs.images.ogp, rootApiURIs.images.twitter] \ep -> do
-      liftIO $ await =<< js_fetch (fromString $ show $ (ep $ T.splitOn "/" att.url) {uriAuthority = uri.uriAuthority, uriScheme = uri.uriScheme})
+      liftIO $ await =<< js_fetch (fromString $ show $ ep $ T.splitOn "/" att.url)
   pure ()
+#else
+generateOGP _ = pure ()
+#endif
 
 data SlugMode a
   = FixedSlug (ReifiedGetter a MisoString)

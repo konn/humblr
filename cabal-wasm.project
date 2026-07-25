@@ -1,5 +1,5 @@
 import: cabal-common.project
-index-state: hackage.haskell.org 2025-02-07T10:59:57Z
+index-state: hackage.haskell.org 2026-07-21T00:00:00Z
 packages: humblr-*/*.cabal
 jobs: $ncpus
 optimization: 2

@@ -25,6 +25,7 @@ import Control.Exception.Safe
 import Control.Monad
 import Control.Monad.Loops (whileJust_)
 import Data.Aeson qualified as A
+import Data.ByteString qualified as BS
 import Data.CaseInsensitive qualified as CI
 import Data.Generics.Labels ()
 import Data.List (sort)
@@ -43,7 +44,6 @@ import Effectful.FileSystem
 import Effectful.FileSystem.Glob (globDirFiles1)
 import Effectful.FileSystem.Tagged (doesDirExist, readFileBinaryStrict, readFileTextStrict, resolveDir')
 import Effectful.Log.Extra
-import Effectful.Random.Static (Random, evalRandom, getStdGen, uniformR)
 import Effectful.Reader.Static (Reader, ask, runReader)
 import Effectful.Reader.Static.Lens qualified as EffL
 import GHC.Generics (Generic)
@@ -56,6 +56,7 @@ import Servant.Auth.Client
 import Servant.Client
 import Servant.Client.Generic
 import StmContainers.Map qualified as TMap
+import System.Random (randomRIO)
 import Text.HTML.Scalpel
 
 defaultMain :: IO ()
@@ -63,9 +64,8 @@ defaultMain =
   defaultMainWith =<< Opt.execParser optionsP
 
 defaultMainWith :: Options -> IO ()
-defaultMainWith opts = do
-  gen <- getStdGen
-  runEff $ runHttp $ runConcurrent $ evalRandom gen $ runFileSystem $ runStdErrLogger "" LogInfo do
+defaultMainWith opts =
+  runEff $ runHttp $ runConcurrent $ runFileSystem $ runStdErrLogger "" LogInfo do
     logInfo_ $ "Reading config from: " <> T.pack opts.config
     config <- Y.decodeFileThrow @_ @AppConfig opts.config
     inputDir <- resolveDir' opts.inputDir
@@ -174,10 +174,10 @@ askAdminAPI = do
 
 runWorker ::
   ( FileSystem :> es
+  , IOE :> es
   , Reader AppEnv :> es
   , Concurrent :> es
   , Reader AppConfig :> es
-  , Random :> es
   , Log :> es
   , Reader Worker :> es
   , Http :> es
@@ -189,7 +189,7 @@ runWorker = do
     logInfo_ "Worker started."
     whileJust_ (atomically $ readTBMQueue workQueue) \work -> do
       logInfo_ "Worker vacant. Wait up to 5secs..."
-      threadDelay =<< uniformR (0_500_000, 5_000_000)
+      threadDelay =<< liftIO (randomRIO (0_500_000, 5_000_000))
       postArticle work
     logInfo_ "Worker finished."
 
@@ -284,7 +284,7 @@ processParsedArticle name pa = do
           ".png" -> Png
           _ -> Jpeg -- never mind
     image <- readFileBinaryStrict src
-    url <- call $ endpoints.postImage slug imageName ctype image
+    url <- call $ endpoints.postImage slug imageName ctype image (fromIntegral $ BS.length image)
     logInfo_ "Uploaded."
     pure Attachment {url = url, name = imageName, ctype}
   logInfo_ "Attachments all uploaded!"

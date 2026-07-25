@@ -1,5 +1,4 @@
 {-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE GADTs #-}
@@ -25,13 +24,11 @@
 module Humblr.Frontend.View (viewModel) where
 
 import Control.Lens ((^.))
-import Data.Aeson (withObject, (.:))
 import Data.Bool (bool)
 import Data.Char qualified as C
 import Data.Foldable (toList)
 import Data.Foldable qualified as F
 import Data.Generics.Labels ()
-import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, maybeToList)
 import Data.String (fromString)
 import Data.Time (TimeZone (..), defaultTimeLocale, formatTime, utcToZonedTime)
@@ -39,11 +36,20 @@ import GHC.IsList qualified as G
 import Humblr.CMark qualified as CM
 import Humblr.Frontend.Actions
 import Humblr.Frontend.Types
-import Miso hiding (view)
-import Miso.String (MisoString, toMisoString, fromMisoString)
+import Miso hiding (View, view)
+import Miso qualified
+import Miso.CSS qualified as CSS
+import Miso.Html.Element hiding (style_)
+import Miso.Html.Event hiding (onEnter)
+import Miso.Html.Property hiding (label_)
+import Miso.JSON (withObject, (.:))
+import Miso.Property (textProp)
+import Miso.String (MisoString, fromMisoString, toMisoString)
 import Miso.String qualified as MS
 import Servant.API (toUrlPiece)
 import Servant.Auth.Client ()
+
+type View = Miso.View Model
 
 viewModel :: Model -> View Action
 viewModel m@Model {..} =
@@ -51,31 +57,18 @@ viewModel m@Model {..} =
     headerView m
       : section_ [class_ "section"] (mainView m)
       : [ div_
-            [class_ "notification is-danger", style_ $ G.fromList [("position", "absolute"), ("bottom", "12pt")]]
+            [class_ "notification is-danger", CSS.style_ $ G.fromList [("position", "absolute"), ("bottom", "12pt")]]
             [ button_ [class_ "delete", onClick DismissError] []
             , h3_ [class_ "subtitle"] [text title]
             , text message
             ]
         | MkErrorMessage {..} <- maybeToList errorMessage
         ]
-      ++ [modalView v | v <- maybeToList modal]
-      ++ [footerView]
+        <> [modalView v | v <- maybeToList modal]
+        <> [footerView]
 
--- FIXME: use 'E' to preventDefault only when the modifier key is pressed
 onPreventClick :: Action -> Attribute Action
-onPreventClick action =
-  onWithOptions
-    defaultOptions {preventDefault = True}
-    "click"
-    ( keyInfoDecoder
-        { decoder = \v -> do
-            ki <- keyInfoDecoder.decoder v
-            if ki.shiftKey || ki.ctrlKey || ki.metaKey || ki.altKey
-              then fail "Modifier key is pressed"
-              else pure ()
-        }
-    )
-    (\() -> action)
+onPreventClick = onClickPrevent
 
 modalView :: Modal -> View Action
 modalView (Share ShareInfo {title, url}) =
@@ -97,10 +90,7 @@ modalView (Share ShareInfo {title, url}) =
                 [class_ "field"]
                 [ div_
                     [class_ "control"]
-                    [ textarea_
-                        [class_ "textarea", readonly_ True, id_ shareAreaId]
-                        [text $ toMisoString title <> "\n" <> toMisoString (show url)]
-                    ]
+                    [textarea_ [class_ "textarea", readonly_ True, id_ shareAreaId, value_ $ toMisoString title <> "\n" <> url]]
                 ]
             , div_
                 [class_ "field is-grouped is-grouped-right"]
@@ -130,7 +120,7 @@ mainView m = case m.mode of
           , span_ [class_ "tag is-large"] [text $ toMisoString tagArticles.tag]
           , " "
           ]
-            ++ cursor
+            <> cursor
       )
       tagArticles
   ErrorPage MkErrorPage {..} ->
@@ -247,7 +237,7 @@ generalEditView ea =
                           [ button_
                               [ class_ "button is-light"
                               , onPreventClick $ openArticle $ fromMisoString $ ea ^. slugG
-                              , href_ $ toMisoString $ toUrlPiece $ rootApiLinks.frontend.articlePage $ fromMisoString $  ea ^. slugG
+                              , href_ $ toMisoString $ toUrlPiece $ rootApiLinks.frontend.articlePage $ fromMisoString $ ea ^. slugG
                               ]
                               ["Cancel"]
                           ]
@@ -259,7 +249,7 @@ generalEditView ea =
                                     [ class_ "button is-primary"
                                     , onClick $ saveAction state
                                     ]
-                                  else [class_ "button is-disabled", disabled_ True]
+                                  else [class_ "button is-disabled", disabled_]
                               )
                               ["Submit"]
                           ]
@@ -293,8 +283,8 @@ editMainView Edit art =
                           [ class_ "textarea is-large"
                           , rows_ "5"
                           , onInput SetEditingArticleContent
+                          , value_ $ art ^. bodyL
                           ]
-                          [text $ art ^. bodyL]
                       ]
                   ]
               ]
@@ -349,12 +339,12 @@ editMainView Edit art =
                           [ div_
                               [class_ "cell"]
                               [ figure_
-                                  [class_ "image is-128by128", styleInline_ "max-width: 256px"]
+                                  [class_ "image is-128by128", CSS.styleInline_ "max-width: 256px"]
                                   [ img_ [width_ "256px", src_ $ attachmentUrl Thumb img.url]
                                   , a_
                                       [ class_ "delete is-large"
                                       , onClick (RemoveBlobURL img.url)
-                                      , style_ $ Map.fromList [("position", "absolute"), ("top", "5pt"), ("right", "5pt")]
+                                      , CSS.styleInline_ "position: absolute; top: 5pt; right: 5pt"
                                       ]
                                       []
                                   ]
@@ -375,7 +365,7 @@ editMainView Edit art =
             btnAction =
               if validTagName
                 then onClick AddEditingTag
-                else disabled_ True
+                else disabled_
             btnAttrs = [btnCls, btnAction, onInput $ SetNewTagName . MS.strip]
             inputAttrs =
               class_ "input"
@@ -430,13 +420,14 @@ editMainView Preview art =
   ]
 
 onChangeId :: (ElementId -> action) -> Attribute action
-onChangeId =
+onChangeId f =
   on
     "change"
     Decoder
       { decoder = withObject "target" $ \o -> ElementId <$> o .: "id"
       , decodeAt = DecodeTarget ["target"]
       }
+    (\elementId _ -> f elementId)
 
 toEditIcon :: EditViewState -> View Action
 toEditIcon Edit = icon "edit"
@@ -474,7 +465,7 @@ articleView mode art@Article {..} =
                           [ div_
                               [class_ "container"]
                               [ figure_
-                                  [class_ "image", styleInline_ "max-width: 1024px;"]
+                                  [class_ "image", CSS.styleInline_ "max-width: 1024px;"]
                                   [ img_ [width_ "1024px", src_ $ toMisoString $ resouceUrl Large img.url, alt_ $ toMisoString img.name]
                                   ]
                               ]
@@ -483,32 +474,32 @@ articleView mode art@Article {..} =
                       ]
                   | not $ null attachments
                   ]
-                    ++ [rawHtml $ toMisoString (CM.commonmarkToHtml [] body)]
+                    <> [div_ [textProp "innerHTML" $ toMisoString (CM.commonmarkToHtml [] body)] []]
                 )
             ]
             <> [ nav_
-                  [class_ "level"]
-                  [ div_
-                      [class_ "level-left"]
-                      [ div_ [class_ "level-item"] [tagsView]
-                      ]
-                  , div_
-                      [class_ "level-right"]
-                      $ [ div_
-                            [class_ "level-item"]
-                            [linkToArticle [small_ [] [text "Posted ", fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S %Z" $ utcToZonedTime jstZone createdAt]]]
-                        ]
-                        ++ [ nav_
-                              [class_ "level"]
-                              [ div_ [class_ "level-left"] []
-                              , div_
-                                  [class_ "level-right"]
-                                  [ div_ [class_ "level-item"] [shareButton art]
-                                  ]
-                              ]
-                           | mode == FrontEndArticle
-                           ]
-                  ]
+                   [class_ "level"]
+                   [ div_
+                       [class_ "level-left"]
+                       [ div_ [class_ "level-item"] [tagsView]
+                       ]
+                   , div_
+                       [class_ "level-right"]
+                       $ [ div_
+                             [class_ "level-item"]
+                             [linkToArticle [small_ [] [text "Posted ", fromString $ formatTime defaultTimeLocale "%Y-%m-%d %H:%M:%S %Z" $ utcToZonedTime jstZone createdAt]]]
+                         ]
+                         <> [ nav_
+                                [class_ "level"]
+                                [ div_ [class_ "level-left"] []
+                                , div_
+                                    [class_ "level-right"]
+                                    [ div_ [class_ "level-item"] [shareButton art]
+                                    ]
+                                ]
+                            | mode == FrontEndArticle
+                            ]
+                   ]
                ]
       ]
 
@@ -640,14 +631,7 @@ articleOverview arts art@Article {..} =
                                     [ img_
                                         [ src_ $ toMisoString $ resouceUrl Medium img.url
                                         , alt_ $ toMisoString img.name
-                                        , style_ $
-                                            Map.fromList
-                                              [ ("width", "auto")
-                                              , ("height", "auto")
-                                              , ("max-width", "100%")
-                                              , ("max-height", "100%")
-                                              , ("object-fit", "cover")
-                                              ]
+                                        , CSS.styleInline_ "width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: cover"
                                         ]
                                     ]
                                 ]
