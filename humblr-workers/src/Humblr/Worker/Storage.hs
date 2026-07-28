@@ -27,6 +27,7 @@ module Humblr.Worker.Storage (
   ResourceException (..),
   GetParams (..),
   SignParams (..),
+  putResource,
 ) where
 
 import Control.Exception.Safe (Exception (..), throwIO, throwString)
@@ -240,16 +241,19 @@ getResourceWith r2 key GetParams {..} = do
 
 put :: T.Text -> T.Text -> ReadableStream -> Word64 -> App T.Text
 put slug path body size = do
-  let name = slug <> "/" <> path
   r2 <- getBinding "R2"
-  hdr <- liftIO $ toHeaders [("Content-Length", BS8.pack $ show size)]
+  liftIO $ putResource r2 slug path body size
+
+putResource :: R2 -> T.Text -> T.Text -> ReadableStream -> Word64 -> IO T.Text
+putResource r2 slug path body size = do
+  let name = slug <> "/" <> path
+  hdr <- toHeaders [("Content-Length", BS8.pack $ show size)]
   let opts =
         newDictionary @R2.PutOptionsFields
           PL.$ setPartialField "httpMetadata" (nonNull (inject hdr))
 
-  liftIO do
-    void $
-      maybe (throwIO $ ResourceNotFound name) pure
-        =<< await'
-        =<< R2.putWith r2 (TE.encodeUtf8 name) (nonNull $ inject body) opts
+  void $
+    maybe (throwIO $ ResourceNotFound name) pure
+      =<< await'
+      =<< R2.putWith r2 (TE.encodeUtf8 name) (nonNull $ inject body) opts
   pure name

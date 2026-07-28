@@ -65,6 +65,7 @@ module Humblr.Frontend.Types (
   adminAPI,
   newTagInputId,
   slugFieldId,
+  articleBodyFieldId,
   shareAreaId,
   fileInputId,
 ) where
@@ -384,6 +385,9 @@ newTagInputId = "new-tag-input"
 
 slugFieldId :: MisoString
 slugFieldId = "new-slug-id"
+
+articleBodyFieldId :: MisoString
+articleBodyFieldId = "article-body-field"
 
 shareAreaId :: MisoString
 shareAreaId = "share-message"

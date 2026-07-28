@@ -35,10 +35,12 @@ import Humblr.Worker.Database (DatabaseServiceClass)
 import Humblr.Worker.Images (ImagesServiceClass)
 import Humblr.Worker.SSR (SSRServiceClass)
 import Humblr.Worker.Storage (GetParams (..), StorageServiceClass)
+import Humblr.Worker.Storage qualified as Storage
 import Network.Cloudflare.Worker.Binding hiding (getBinding, getEnv, getSecret)
 import Network.Cloudflare.Worker.Binding qualified as Raw
 import Network.Cloudflare.Worker.Binding.Assets (AssetsClass)
 import Network.Cloudflare.Worker.Binding.Assets qualified as RawAssets
+import Network.Cloudflare.Worker.Binding.R2 (R2Class)
 import Network.Cloudflare.Worker.Request qualified as Req
 import Network.Cloudflare.Worker.Response (WorkerResponse)
 import Servant.Auth.Cloudflare.Workers
@@ -58,7 +60,8 @@ type HumblrEnv =
   BindingsClass
     '["ROOT_URI", "CF_TEAM_NAME"]
     '["CF_AUD_TAG"]
-    '[ '("Storage", StorageServiceClass)
+    '[ '("R2", R2Class)
+     , '("Storage", StorageServiceClass)
      , '("Database", DatabaseServiceClass)
      , '("SSR", SSRServiceClass)
      , '("ASSETS", AssetsClass)
@@ -225,8 +228,8 @@ adminAPI usr =
 
 putResource :: AuthResult User -> T.Text -> T.Text -> ReadableStream -> Word64 -> Handler HumblrEnv T.Text
 putResource user slug name body size = protectIfConfigured user $ do
-  storage <- getBinding "Storage"
-  liftIO $ await' =<< storage.put slug name body size
+  r2 <- getBinding "R2"
+  liftIO $ Storage.putResource r2 slug name body size
 
 putArticle :: AuthResult User -> T.Text -> ArticleUpdate -> Handler HumblrEnv NoContent
 putArticle user slug upd = protectIfConfigured user do

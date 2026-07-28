@@ -282,7 +282,8 @@ editMainView Edit art =
                           [ class_ "textarea is-large"
                           , rows_ "5"
                           , onInput SetEditingArticleContent
-                          , value_ $ art ^. bodyL
+                          , id_ articleBodyFieldId
+                          , onCreated $ SetFieldValue articleBodyFieldId $ art ^. bodyL
                           ]
                       ]
                   ]
